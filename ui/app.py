@@ -31,587 +31,7 @@
 # # UI ONLY: backend/API/session logic remains unchanged.
 # # ============================================================
 
-# # st.markdown(
-# #     """
-# #     <style>
-# #     #MainMenu {visibility: hidden;}
-# #     footer {visibility: hidden;}
-# #     header[data-testid="stHeader"] {background: transparent;}
 
-# #     .stApp {
-# #         background: #f5f7fb;
-# #     }
-
-# #     .block-container {
-# #         max-width: 1450px;
-# #         padding-top: 1.4rem;
-# #         padding-bottom: 2rem;
-# #     }
-
-# #     section[data-testid="stSidebar"] {
-# #         background:
-# #             linear-gradient(180deg, #10253f 0%, #0c1d33 55%, #09182a 100%);
-# #         border-right: 1px solid rgba(255,255,255,0.07);
-# #     }
-
-# #     section[data-testid="stSidebar"] * {
-# #         color: #f7faff;
-# #     }
-
-# #     section[data-testid="stSidebar"] .stButton > button {
-# #         width: 100%;
-# #         text-align: left;
-# #         justify-content: flex-start;
-# #         border: 1px solid transparent;
-# #         background: transparent;
-# #         color: #e8eef7;
-# #         border-radius: 10px;
-# #         padding: 0.7rem 0.85rem;
-# #         font-weight: 600;
-# #     }
-
-# #     section[data-testid="stSidebar"] .stButton > button:hover {
-# #         background: rgba(80, 145, 255, 0.17);
-# #         border-color: rgba(120, 169, 255, 0.22);
-# #     }
-
-# #     .overview-title {
-# #         font-size: 2rem;
-# #         font-weight: 800;
-# #         color: #0d1b32;
-# #         letter-spacing: -0.03em;
-# #         line-height: 1.15;
-# #         margin: 0;
-# #     }
-
-# #     .overview-subtitle {
-# #         color: #64748b;
-# #         margin-top: 0.35rem;
-# #         font-size: 0.98rem;
-# #     }
-
-# #     .ready-pill {
-# #         display: inline-block;
-# #         padding: 0.55rem 0.9rem;
-# #         border-radius: 10px;
-# #         background: #dff8ee;
-# #         color: #078b63;
-# #         font-weight: 700;
-# #         font-size: 0.9rem;
-# #         border: 1px solid #c8f0e2;
-# #     }
-
-# #     .status-pill {
-# #         display: inline-block;
-# #         padding: 0.45rem 0.8rem;
-# #         border-radius: 999px;
-# #         background: #edf4ff;
-# #         color: #2563eb;
-# #         font-weight: 700;
-# #         font-size: 0.84rem;
-# #     }
-
-# #     div[data-testid="stMetric"] {
-# #         background: #ffffff;
-# #         border: 1px solid #dfe7f2;
-# #         border-radius: 14px;
-# #         padding: 1.1rem 1rem;
-# #         box-shadow: 0 3px 12px rgba(25, 53, 88, 0.04);
-# #         min-height: 132px;
-# #         display: flex;
-# #         flex-direction: column;
-# #         justify-content: center;
-# #         text-align: center;
-# #     }
-
-# #     div[data-testid="stMetric"] label {
-# #         justify-content: center;
-# #         color: #51627a !important;
-# #         font-weight: 700 !important;
-# #     }
-
-# #     div[data-testid="stMetricValue"] {
-# #         color: #0e1c35;
-# #         font-weight: 800;
-# #     }
-
-# #     .stButton > button {
-# #         border-radius: 10px;
-# #         min-height: 42px;
-# #         font-weight: 700;
-# #     }
-
-# #     div[data-testid="stForm"] {
-# #         background: #ffffff;
-# #         border: 1px solid #dfe7f2;
-# #         border-radius: 16px;
-# #         padding: 1.15rem;
-# #         box-shadow: 0 4px 18px rgba(24,49,83,0.045);
-# #     }
-
-# #     .chat-heading {
-# #         font-size: 1.15rem;
-# #         font-weight: 800;
-# #         color: #10213b;
-# #         margin-bottom: 0.15rem;
-# #     }
-
-# #     .chat-subtitle {
-# #         color: #718096;
-# #         font-size: 0.92rem;
-# #         margin-bottom: 0.8rem;
-# #     }
-
-# #     div[data-testid="stChatMessage"] {
-# #         background: #ffffff;
-# #         border: 1px solid #e2e8f0;
-# #         border-radius: 14px;
-# #         padding: 0.65rem 0.85rem;
-# #         margin-bottom: 0.65rem;
-# #     }
-
-# #     div[data-testid="stChatInput"] {
-# #         background: #ffffff;
-# #         border-top: 1px solid #e4eaf2;
-# #         padding-top: 0.6rem;
-# #     }
-
-# #     hr {
-# #         border-color: #e7edf4;
-# #     }
-
-# #     /* ========================================================
-# #        CLEAN CHATGPT-STYLE SIDEBAR
-# #        ======================================================== */
-
-# #     section[data-testid="stSidebar"] {
-# #         min-width: 300px !important;
-# #         max-width: 300px !important;
-# #         background: #0c1d33 !important;
-# #         border-right: 1px solid rgba(255,255,255,0.07);
-# #     }
-
-# #     section[data-testid="stSidebar"] > div:first-child {
-# #         padding-top: 0.5rem;
-# #     }
-
-# #     section[data-testid="stSidebar"] .block-container {
-# #         padding-top: 0.6rem !important;
-# #         padding-left: 0.8rem !important;
-# #         padding-right: 0.8rem !important;
-# #     }
-
-# #     section[data-testid="stSidebar"] * {
-# #         box-sizing: border-box;
-# #     }
-
-# #     section[data-testid="stSidebar"] .stMarkdown {
-# #         margin: 0 !important;
-# #         padding: 0 !important;
-# #     }
-
-# #     section[data-testid="stSidebar"] div[data-testid="stMarkdownContainer"] {
-# #         margin: 0 !important;
-# #         padding: 0 !important;
-# #     }
-
-# #     section[data-testid="stSidebar"] pre,
-# #     section[data-testid="stSidebar"] code {
-# #         background: transparent !important;
-# #         border: none !important;
-# #         padding: 0 !important;
-# #         margin: 0 !important;
-# #     }
-
-# #     section[data-testid="stSidebar"] .stButton {
-# #         margin: 0.08rem 0 !important;
-# #     }
-
-# #     section[data-testid="stSidebar"] .stButton > button {
-# #         width: 100%;
-# #         min-height: 38px;
-# #         padding: 0.45rem 0.68rem;
-# #         justify-content: flex-start;
-# #         text-align: left;
-# #         border-radius: 9px;
-# #         border: 1px solid transparent;
-# #         background: transparent;
-# #         box-shadow: none;
-# #         font-size: 0.83rem;
-# #         font-weight: 600;
-# #         color: #dbe7f5 !important;
-# #         transition:
-# #             background 0.14s ease,
-# #             border-color 0.14s ease;
-# #     }
-
-# #     section[data-testid="stSidebar"] .stButton > button:hover {
-# #         background: rgba(255,255,255,0.075);
-# #         border-color: rgba(255,255,255,0.06);
-# #         transform: none;
-# #     }
-
-# #     section[data-testid="stSidebar"] button[kind="primary"] {
-# #         background: rgba(88,135,255,0.16) !important;
-# #         border-color: rgba(110,151,255,0.20) !important;
-# #         color: #ffffff !important;
-# #     }
-
-# #     section[data-testid="stSidebar"] button:disabled {
-# #         opacity: 0.42;
-# #     }
-
-# #     .cc-sidebar-brand {
-# #         padding: 0.35rem 0.15rem 0.55rem 0.15rem;
-# #     }
-
-# #     .cc-sidebar-brand-row {
-# #         display: flex;
-# #         align-items: center;
-# #         gap: 0.65rem;
-# #     }
-
-# #     .cc-sidebar-logo {
-# #         width: 34px;
-# #         height: 34px;
-# #         flex: 0 0 34px;
-# #         display: flex;
-# #         align-items: center;
-# #         justify-content: center;
-# #         border-radius: 10px;
-# #         background: rgba(255,255,255,0.09);
-# #         color: #ffffff;
-# #         font-size: 1rem;
-# #     }
-
-# #     .cc-sidebar-title {
-# #         color: #ffffff;
-# #         font-size: 1rem;
-# #         line-height: 1.2;
-# #         font-weight: 800;
-# #         letter-spacing: -0.01em;
-# #     }
-
-# #     .cc-sidebar-subtitle {
-# #         margin-top: 0.13rem;
-# #         color: #879ab2;
-# #         font-size: 0.69rem;
-# #         line-height: 1.2;
-# #     }
-
-# #     .cc-sidebar-user {
-# #         display: flex;
-# #         align-items: center;
-# #         gap: 0.58rem;
-# #         margin: 0.25rem 0 0.75rem 0;
-# #         padding: 0.58rem 0.62rem;
-# #         border-radius: 10px;
-# #         background: rgba(255,255,255,0.045);
-# #         border: 1px solid rgba(255,255,255,0.055);
-# #     }
-
-# #     .cc-user-avatar {
-# #         width: 30px;
-# #         height: 30px;
-# #         flex: 0 0 30px;
-# #         display: flex;
-# #         align-items: center;
-# #         justify-content: center;
-# #         border-radius: 8px;
-# #         background: #203b5b;
-# #         color: #ffffff;
-# #         font-size: 0.77rem;
-# #         font-weight: 800;
-# #     }
-
-# #     .cc-user-copy {
-# #         min-width: 0;
-# #         flex: 1;
-# #     }
-
-# #     .cc-user-name {
-# #         overflow: hidden;
-# #         color: #f8fbff;
-# #         font-size: 0.78rem;
-# #         font-weight: 700;
-# #         line-height: 1.15;
-# #         text-overflow: ellipsis;
-# #         white-space: nowrap;
-# #     }
-
-# #     .cc-user-email {
-# #         overflow: hidden;
-# #         margin-top: 0.13rem;
-# #         color: #8093aa;
-# #         font-size: 0.65rem;
-# #         line-height: 1.15;
-# #         text-overflow: ellipsis;
-# #         white-space: nowrap;
-# #     }
-
-# #     .cc-sidebar-label {
-# #         margin: 0.3rem 0.18rem 0.28rem 0.18rem;
-# #         color: #6f829a;
-# #         font-size: 0.64rem;
-# #         font-weight: 800;
-# #         letter-spacing: 0.075em;
-# #         text-transform: uppercase;
-# #     }
-
-# #     .cc-chat-label {
-# #         margin-top: 0.65rem;
-# #     }
-
-# #     .cc-sidebar-divider {
-# #         height: 1px;
-# #         margin: 0.75rem 0 0.65rem 0;
-# #         background: rgba(255,255,255,0.065);
-# #     }
-
-# #     .cc-empty-chats {
-# #         padding: 0.45rem 0.5rem 0.6rem 0.5rem;
-# #         color: #8a9cb1;
-# #         font-size: 0.72rem;
-# #         line-height: 1.35;
-# #     }
-
-# #     .cc-empty-chats span {
-# #         color: #64778f;
-# #         font-size: 0.66rem;
-# #     }
-
-# #     .cc-footer-divider {
-# #         margin-top: 0.8rem;
-# #     }
-
-# #     .cc-account-card {
-# #         margin: 0.25rem 0 0.5rem 0;
-# #         padding: 0.62rem 0.66rem;
-# #         border-radius: 10px;
-# #         background: rgba(255,255,255,0.04);
-# #         border: 1px solid rgba(255,255,255,0.055);
-# #     }
-
-# #     .cc-account-top {
-# #         display: flex;
-# #         align-items: center;
-# #         justify-content: space-between;
-# #         color: #6f829a;
-# #         font-size: 0.61rem;
-# #         font-weight: 800;
-# #         letter-spacing: 0.065em;
-# #     }
-
-# #     .cc-account-dot {
-# #         color: #54d6a1;
-# #         font-size: 0.62rem;
-# #     }
-
-# #     .cc-account-dot-off {
-# #         color: #e8b64c;
-# #     }
-
-# #     .cc-account-id {
-# #         overflow: hidden;
-# #         margin-top: 0.28rem;
-# #         color: #edf5ff;
-# #         font-size: 0.75rem;
-# #         font-weight: 700;
-# #         text-overflow: ellipsis;
-# #         white-space: nowrap;
-# #     }
-
-# #     .cc-account-meta {
-# #         overflow: hidden;
-# #         margin-top: 0.17rem;
-# #         color: #788ba2;
-# #         font-size: 0.64rem;
-# #         text-overflow: ellipsis;
-# #         white-space: nowrap;
-# #     }
-
-# #     /* ========================================================
-# #        CLIENT WORKSPACE CONTROLS
-# #        Keep Streamlit's white application form styling out of
-# #        the dark sidebar and make all workspace controls readable.
-# #        ======================================================== */
-
-# #     .cc-workspace-help {
-# #         margin: -0.02rem 0.18rem 0.42rem 0.18rem;
-# #         color: #8295ac;
-# #         font-size: 0.66rem;
-# #         line-height: 1.35;
-# #     }
-
-# #     /* Workspace select */
-# #     section[data-testid="stSidebar"] div[data-baseweb="select"] > div {
-# #         min-height: 40px !important;
-# #         background: #ffffff !important;
-# #         border: 1px solid #d7dee8 !important;
-# #         border-radius: 9px !important;
-# #         box-shadow: none !important;
-# #     }
-
-# #     section[data-testid="stSidebar"] div[data-baseweb="select"] > div:hover {
-# #         border-color: #9fb5d0 !important;
-# #         background: #ffffff !important;
-# #     }
-
-# #     /* Selected workspace text: black + bold. */
-# #     section[data-testid="stSidebar"] div[data-baseweb="select"] span,
-# #     section[data-testid="stSidebar"] div[data-baseweb="select"] input,
-# #     section[data-testid="stSidebar"] div[data-baseweb="select"] [data-testid="stSelectboxVirtualDropdown"] {
-# #         color: #111827 !important;
-# #         -webkit-text-fill-color: #111827 !important;
-# #         font-size: 0.78rem !important;
-# #         font-weight: 700 !important;
-# #     }
-
-# #     section[data-testid="stSidebar"] div[data-baseweb="select"] svg {
-# #         color: #475569 !important;
-# #         fill: #475569 !important;
-# #     }
-
-# #     section[data-testid="stSidebar"] div[data-baseweb="select"] input::placeholder {
-# #         color: #64748b !important;
-# #         -webkit-text-fill-color: #64748b !important;
-# #         font-weight: 600 !important;
-# #         opacity: 1 !important;
-# #     }
-
-# #     /* Workspace expander */
-# #     section[data-testid="stSidebar"] div[data-testid="stExpander"] {
-# #         margin-top: 0.42rem !important;
-# #         margin-bottom: 0.72rem !important;
-# #     }
-
-# #     section[data-testid="stSidebar"] div[data-testid="stExpander"] details {
-# #         overflow: hidden;
-# #         background: rgba(255,255,255,0.025) !important;
-# #         border: 1px solid rgba(255,255,255,0.075) !important;
-# #         border-radius: 10px !important;
-# #         box-shadow: none !important;
-# #     }
-
-# #     section[data-testid="stSidebar"] div[data-testid="stExpander"] summary {
-# #         min-height: 40px !important;
-# #         padding: 0.48rem 0.68rem !important;
-# #         background: rgba(255,255,255,0.035) !important;
-# #         border-radius: 9px !important;
-# #     }
-
-# #     section[data-testid="stSidebar"] div[data-testid="stExpander"] summary:hover {
-# #         background: rgba(255,255,255,0.07) !important;
-# #     }
-
-# #     section[data-testid="stSidebar"] div[data-testid="stExpander"] summary p,
-# #     section[data-testid="stSidebar"] div[data-testid="stExpander"] summary span,
-# #     section[data-testid="stSidebar"] div[data-testid="stExpander"] summary svg {
-# #         color: #dce8f6 !important;
-# #         fill: #9fb2c9 !important;
-# #         font-size: 0.76rem !important;
-# #         font-weight: 650 !important;
-# #     }
-
-# #     /* Do not inherit the main-page white form card inside sidebar. */
-# #     section[data-testid="stSidebar"] div[data-testid="stExpander"] div[data-testid="stForm"] {
-# #         margin: 0 !important;
-# #         padding: 0.65rem 0.68rem 0.72rem 0.68rem !important;
-# #         background: transparent !important;
-# #         border: 0 !important;
-# #         border-top: 1px solid rgba(255,255,255,0.06) !important;
-# #         border-radius: 0 !important;
-# #         box-shadow: none !important;
-# #     }
-
-# #     section[data-testid="stSidebar"] div[data-testid="stExpander"] label p {
-# #         color: #9eb0c6 !important;
-# #         font-size: 0.67rem !important;
-# #         font-weight: 650 !important;
-# #     }
-
-# #     .cc-workspace-danger-title {
-# #         margin-top: 0.75rem;
-# #         padding-top: 0.72rem;
-# #         border-top: 1px solid rgba(248,113,113,0.22);
-# #         color: #fca5a5;
-# #         font-size: 0.72rem;
-# #         font-weight: 800;
-# #         text-transform: uppercase;
-# #         letter-spacing: 0.04em;
-# #     }
-
-# #     /* Workspace-name input */
-# #     section[data-testid="stSidebar"] .stTextInput input {
-# #         min-height: 39px !important;
-# #         background: #ffffff !important;
-# #         border: 1px solid #d7dee8 !important;
-# #         border-radius: 8px !important;
-# #         color: #111827 !important;
-# #         -webkit-text-fill-color: #111827 !important;
-# #         caret-color: #111827 !important;
-# #         box-shadow: none !important;
-# #         font-size: 0.77rem !important;
-# #         font-weight: 700 !important;
-# #     }
-
-# #     section[data-testid="stSidebar"] .stTextInput input:focus {
-# #         border-color: rgba(100, 149, 255, 0.75) !important;
-# #         box-shadow: 0 0 0 1px rgba(100, 149, 255, 0.30) !important;
-# #     }
-
-# #     section[data-testid="stSidebar"] .stTextInput input::placeholder {
-# #         color: #64748b !important;
-# #         -webkit-text-fill-color: #64748b !important;
-# #         font-weight: 600 !important;
-# #         opacity: 1 !important;
-# #     }
-
-# #     /* Create workspace submit button */
-# #     section[data-testid="stSidebar"] div[data-testid="stForm"] button {
-# #         width: 100% !important;
-# #         min-height: 38px !important;
-# #         margin-top: 0.25rem !important;
-# #         justify-content: center !important;
-# #         text-align: center !important;
-# #         background: #2563eb !important;
-# #         border: 1px solid #3b82f6 !important;
-# #         border-radius: 8px !important;
-# #         color: #ffffff !important;
-# #         font-size: 0.76rem !important;
-# #         font-weight: 700 !important;
-# #         box-shadow: none !important;
-# #     }
-
-# #     section[data-testid="stSidebar"] div[data-testid="stForm"] button:hover {
-# #         background: #2f6ff2 !important;
-# #         border-color: #60a5fa !important;
-# #     }
-
-# #     /* Streamlit may mount the select menu in a portal outside the sidebar. */
-# #     div[role="listbox"] {
-# #         background: #ffffff !important;
-# #         border: 1px solid #d8e1ec !important;
-# #         border-radius: 9px !important;
-# #         box-shadow: 0 10px 30px rgba(15, 23, 42, 0.14) !important;
-# #     }
-
-# #     div[role="listbox"] [role="option"] {
-# #         color: #14233a !important;
-# #         background: #ffffff !important;
-# #         font-size: 0.79rem !important;
-# #     }
-
-# #     div[role="listbox"] [role="option"]:hover,
-# #     div[role="listbox"] [aria-selected="true"] {
-# #         color: #0f1f36 !important;
-# #         background: #edf4ff !important;
-# #     }
-
-# #     </style>
-# #     """,
-# #     unsafe_allow_html=True,
-# # )
 
 
 # st.markdown(
@@ -2384,20 +1804,57 @@
 #     except (TypeError,ValueError):return f"{currency} 0.00"
 
 # def render_billing_results(billing: dict | None) -> None:
-#     if not billing:return
-#     st.divider();st.subheader("Billing Evidence")
-#     cols=st.columns(4)
-#     cols[0].metric("Billing Access","Available" if billing.get("available") else "Unavailable")
-#     cols[1].metric("Current Period Cost",_format_cost(billing.get("total_cost"),billing.get("currency") or "USD"))
-#     cols[2].metric("Billed Services",len(billing.get("service_costs") or []))
-#     cols[3].metric("Billing Regions",len(billing.get("region_costs") or []))
-#     service_costs=billing.get("service_costs") or []
-#     if service_costs:st.dataframe(service_costs,use_container_width=True,hide_index=True)
-#     if not billing.get("available"):st.warning("Billing data is unavailable; paid/zero-cost classification may be incomplete.")
+#     if not billing:
+#         return
+
+#     st.divider()
+#     st.subheader("Billing Evidence")
+#     available = bool(billing.get("available"))
+#     warnings = billing.get("warnings") or []
+#     service_costs = billing.get("service_costs") or []
+#     region_costs = billing.get("region_costs") or []
+
+#     cols = st.columns(4)
+#     cols[0].metric("Billing Access", "Available" if available else "Unavailable")
+#     # Do not present 0.00 as an observed bill when billing collection failed.
+#     cols[1].metric(
+#         "Current Period Cost",
+#         _format_cost(billing.get("total_cost"), billing.get("currency") or "USD")
+#         if available else "Unknown",
+#     )
+#     cols[2].metric("Billed Services", len(service_costs) if available else "Unknown")
+#     cols[3].metric("Billing Regions", len(region_costs) if available else "Unknown")
+
+#     if not available:
+#         st.error(
+#             "AWS resource discovery succeeded, but Billing MCP evidence is unavailable. "
+#             "Paid / zero-cost / unbilled classification is intentionally not calculated."
+#         )
+#         if warnings:
+#             with st.expander("Billing MCP error details", expanded=True):
+#                 for warning in warnings:
+#                     st.code(str(warning), language=None)
+#         st.caption(
+#             "Check the nested error above first. Common causes are Cost Explorer IAM "
+#             "permission, Billing MCP startup, or MCP tool/schema mismatch."
+#         )
+#         return
+
+#     if service_costs:
+#         st.dataframe(service_costs, use_container_width=True, hide_index=True)
+#     else:
+#         st.info("Billing query succeeded, but no service billing rows were returned for this period.")
 
 # def render_classification_results(data: dict | None) -> None:
-#     if not data:return
-#     st.divider();st.subheader("Infrastructure Classification")
+#     if not data:
+#         return
+#     st.divider()
+#     st.subheader("Infrastructure Classification")
+#     if not data.get("billing_available"):
+#         st.warning(
+#             "Classification is pending because Billing MCP evidence is unavailable. "
+#             "Discovered services are not being labelled Unbilled just because billing failed."
+#         )
 #     primary=data.get("primary_paid_services") or []; zero=data.get("zero_cost_services") or []; supporting=data.get("supporting_services") or []; unbilled=data.get("discovered_unbilled_services") or []
 #     cols=st.columns(5);cols[0].metric("Paid Services",len(primary));cols[1].metric("Zero-Cost",len(zero));cols[2].metric("Supporting",len(supporting));cols[3].metric("Unbilled",len(unbilled));cols[4].metric("Paid Regions",len(data.get("paid_regions") or []))
 #     tabs=st.tabs(["Paid Services","Zero-Cost","Supporting","Regions"])
@@ -4376,6 +3833,8 @@
 
 
      
+     
+     
 from time import perf_counter
 from html import escape
 
@@ -4409,587 +3868,7 @@ st.set_page_config(
 # UI ONLY: backend/API/session logic remains unchanged.
 # ============================================================
 
-# st.markdown(
-#     """
-#     <style>
-#     #MainMenu {visibility: hidden;}
-#     footer {visibility: hidden;}
-#     header[data-testid="stHeader"] {background: transparent;}
 
-#     .stApp {
-#         background: #f5f7fb;
-#     }
-
-#     .block-container {
-#         max-width: 1450px;
-#         padding-top: 1.4rem;
-#         padding-bottom: 2rem;
-#     }
-
-#     section[data-testid="stSidebar"] {
-#         background:
-#             linear-gradient(180deg, #10253f 0%, #0c1d33 55%, #09182a 100%);
-#         border-right: 1px solid rgba(255,255,255,0.07);
-#     }
-
-#     section[data-testid="stSidebar"] * {
-#         color: #f7faff;
-#     }
-
-#     section[data-testid="stSidebar"] .stButton > button {
-#         width: 100%;
-#         text-align: left;
-#         justify-content: flex-start;
-#         border: 1px solid transparent;
-#         background: transparent;
-#         color: #e8eef7;
-#         border-radius: 10px;
-#         padding: 0.7rem 0.85rem;
-#         font-weight: 600;
-#     }
-
-#     section[data-testid="stSidebar"] .stButton > button:hover {
-#         background: rgba(80, 145, 255, 0.17);
-#         border-color: rgba(120, 169, 255, 0.22);
-#     }
-
-#     .overview-title {
-#         font-size: 2rem;
-#         font-weight: 800;
-#         color: #0d1b32;
-#         letter-spacing: -0.03em;
-#         line-height: 1.15;
-#         margin: 0;
-#     }
-
-#     .overview-subtitle {
-#         color: #64748b;
-#         margin-top: 0.35rem;
-#         font-size: 0.98rem;
-#     }
-
-#     .ready-pill {
-#         display: inline-block;
-#         padding: 0.55rem 0.9rem;
-#         border-radius: 10px;
-#         background: #dff8ee;
-#         color: #078b63;
-#         font-weight: 700;
-#         font-size: 0.9rem;
-#         border: 1px solid #c8f0e2;
-#     }
-
-#     .status-pill {
-#         display: inline-block;
-#         padding: 0.45rem 0.8rem;
-#         border-radius: 999px;
-#         background: #edf4ff;
-#         color: #2563eb;
-#         font-weight: 700;
-#         font-size: 0.84rem;
-#     }
-
-#     div[data-testid="stMetric"] {
-#         background: #ffffff;
-#         border: 1px solid #dfe7f2;
-#         border-radius: 14px;
-#         padding: 1.1rem 1rem;
-#         box-shadow: 0 3px 12px rgba(25, 53, 88, 0.04);
-#         min-height: 132px;
-#         display: flex;
-#         flex-direction: column;
-#         justify-content: center;
-#         text-align: center;
-#     }
-
-#     div[data-testid="stMetric"] label {
-#         justify-content: center;
-#         color: #51627a !important;
-#         font-weight: 700 !important;
-#     }
-
-#     div[data-testid="stMetricValue"] {
-#         color: #0e1c35;
-#         font-weight: 800;
-#     }
-
-#     .stButton > button {
-#         border-radius: 10px;
-#         min-height: 42px;
-#         font-weight: 700;
-#     }
-
-#     div[data-testid="stForm"] {
-#         background: #ffffff;
-#         border: 1px solid #dfe7f2;
-#         border-radius: 16px;
-#         padding: 1.15rem;
-#         box-shadow: 0 4px 18px rgba(24,49,83,0.045);
-#     }
-
-#     .chat-heading {
-#         font-size: 1.15rem;
-#         font-weight: 800;
-#         color: #10213b;
-#         margin-bottom: 0.15rem;
-#     }
-
-#     .chat-subtitle {
-#         color: #718096;
-#         font-size: 0.92rem;
-#         margin-bottom: 0.8rem;
-#     }
-
-#     div[data-testid="stChatMessage"] {
-#         background: #ffffff;
-#         border: 1px solid #e2e8f0;
-#         border-radius: 14px;
-#         padding: 0.65rem 0.85rem;
-#         margin-bottom: 0.65rem;
-#     }
-
-#     div[data-testid="stChatInput"] {
-#         background: #ffffff;
-#         border-top: 1px solid #e4eaf2;
-#         padding-top: 0.6rem;
-#     }
-
-#     hr {
-#         border-color: #e7edf4;
-#     }
-
-#     /* ========================================================
-#        CLEAN CHATGPT-STYLE SIDEBAR
-#        ======================================================== */
-
-#     section[data-testid="stSidebar"] {
-#         min-width: 300px !important;
-#         max-width: 300px !important;
-#         background: #0c1d33 !important;
-#         border-right: 1px solid rgba(255,255,255,0.07);
-#     }
-
-#     section[data-testid="stSidebar"] > div:first-child {
-#         padding-top: 0.5rem;
-#     }
-
-#     section[data-testid="stSidebar"] .block-container {
-#         padding-top: 0.6rem !important;
-#         padding-left: 0.8rem !important;
-#         padding-right: 0.8rem !important;
-#     }
-
-#     section[data-testid="stSidebar"] * {
-#         box-sizing: border-box;
-#     }
-
-#     section[data-testid="stSidebar"] .stMarkdown {
-#         margin: 0 !important;
-#         padding: 0 !important;
-#     }
-
-#     section[data-testid="stSidebar"] div[data-testid="stMarkdownContainer"] {
-#         margin: 0 !important;
-#         padding: 0 !important;
-#     }
-
-#     section[data-testid="stSidebar"] pre,
-#     section[data-testid="stSidebar"] code {
-#         background: transparent !important;
-#         border: none !important;
-#         padding: 0 !important;
-#         margin: 0 !important;
-#     }
-
-#     section[data-testid="stSidebar"] .stButton {
-#         margin: 0.08rem 0 !important;
-#     }
-
-#     section[data-testid="stSidebar"] .stButton > button {
-#         width: 100%;
-#         min-height: 38px;
-#         padding: 0.45rem 0.68rem;
-#         justify-content: flex-start;
-#         text-align: left;
-#         border-radius: 9px;
-#         border: 1px solid transparent;
-#         background: transparent;
-#         box-shadow: none;
-#         font-size: 0.83rem;
-#         font-weight: 600;
-#         color: #dbe7f5 !important;
-#         transition:
-#             background 0.14s ease,
-#             border-color 0.14s ease;
-#     }
-
-#     section[data-testid="stSidebar"] .stButton > button:hover {
-#         background: rgba(255,255,255,0.075);
-#         border-color: rgba(255,255,255,0.06);
-#         transform: none;
-#     }
-
-#     section[data-testid="stSidebar"] button[kind="primary"] {
-#         background: rgba(88,135,255,0.16) !important;
-#         border-color: rgba(110,151,255,0.20) !important;
-#         color: #ffffff !important;
-#     }
-
-#     section[data-testid="stSidebar"] button:disabled {
-#         opacity: 0.42;
-#     }
-
-#     .cc-sidebar-brand {
-#         padding: 0.35rem 0.15rem 0.55rem 0.15rem;
-#     }
-
-#     .cc-sidebar-brand-row {
-#         display: flex;
-#         align-items: center;
-#         gap: 0.65rem;
-#     }
-
-#     .cc-sidebar-logo {
-#         width: 34px;
-#         height: 34px;
-#         flex: 0 0 34px;
-#         display: flex;
-#         align-items: center;
-#         justify-content: center;
-#         border-radius: 10px;
-#         background: rgba(255,255,255,0.09);
-#         color: #ffffff;
-#         font-size: 1rem;
-#     }
-
-#     .cc-sidebar-title {
-#         color: #ffffff;
-#         font-size: 1rem;
-#         line-height: 1.2;
-#         font-weight: 800;
-#         letter-spacing: -0.01em;
-#     }
-
-#     .cc-sidebar-subtitle {
-#         margin-top: 0.13rem;
-#         color: #879ab2;
-#         font-size: 0.69rem;
-#         line-height: 1.2;
-#     }
-
-#     .cc-sidebar-user {
-#         display: flex;
-#         align-items: center;
-#         gap: 0.58rem;
-#         margin: 0.25rem 0 0.75rem 0;
-#         padding: 0.58rem 0.62rem;
-#         border-radius: 10px;
-#         background: rgba(255,255,255,0.045);
-#         border: 1px solid rgba(255,255,255,0.055);
-#     }
-
-#     .cc-user-avatar {
-#         width: 30px;
-#         height: 30px;
-#         flex: 0 0 30px;
-#         display: flex;
-#         align-items: center;
-#         justify-content: center;
-#         border-radius: 8px;
-#         background: #203b5b;
-#         color: #ffffff;
-#         font-size: 0.77rem;
-#         font-weight: 800;
-#     }
-
-#     .cc-user-copy {
-#         min-width: 0;
-#         flex: 1;
-#     }
-
-#     .cc-user-name {
-#         overflow: hidden;
-#         color: #f8fbff;
-#         font-size: 0.78rem;
-#         font-weight: 700;
-#         line-height: 1.15;
-#         text-overflow: ellipsis;
-#         white-space: nowrap;
-#     }
-
-#     .cc-user-email {
-#         overflow: hidden;
-#         margin-top: 0.13rem;
-#         color: #8093aa;
-#         font-size: 0.65rem;
-#         line-height: 1.15;
-#         text-overflow: ellipsis;
-#         white-space: nowrap;
-#     }
-
-#     .cc-sidebar-label {
-#         margin: 0.3rem 0.18rem 0.28rem 0.18rem;
-#         color: #6f829a;
-#         font-size: 0.64rem;
-#         font-weight: 800;
-#         letter-spacing: 0.075em;
-#         text-transform: uppercase;
-#     }
-
-#     .cc-chat-label {
-#         margin-top: 0.65rem;
-#     }
-
-#     .cc-sidebar-divider {
-#         height: 1px;
-#         margin: 0.75rem 0 0.65rem 0;
-#         background: rgba(255,255,255,0.065);
-#     }
-
-#     .cc-empty-chats {
-#         padding: 0.45rem 0.5rem 0.6rem 0.5rem;
-#         color: #8a9cb1;
-#         font-size: 0.72rem;
-#         line-height: 1.35;
-#     }
-
-#     .cc-empty-chats span {
-#         color: #64778f;
-#         font-size: 0.66rem;
-#     }
-
-#     .cc-footer-divider {
-#         margin-top: 0.8rem;
-#     }
-
-#     .cc-account-card {
-#         margin: 0.25rem 0 0.5rem 0;
-#         padding: 0.62rem 0.66rem;
-#         border-radius: 10px;
-#         background: rgba(255,255,255,0.04);
-#         border: 1px solid rgba(255,255,255,0.055);
-#     }
-
-#     .cc-account-top {
-#         display: flex;
-#         align-items: center;
-#         justify-content: space-between;
-#         color: #6f829a;
-#         font-size: 0.61rem;
-#         font-weight: 800;
-#         letter-spacing: 0.065em;
-#     }
-
-#     .cc-account-dot {
-#         color: #54d6a1;
-#         font-size: 0.62rem;
-#     }
-
-#     .cc-account-dot-off {
-#         color: #e8b64c;
-#     }
-
-#     .cc-account-id {
-#         overflow: hidden;
-#         margin-top: 0.28rem;
-#         color: #edf5ff;
-#         font-size: 0.75rem;
-#         font-weight: 700;
-#         text-overflow: ellipsis;
-#         white-space: nowrap;
-#     }
-
-#     .cc-account-meta {
-#         overflow: hidden;
-#         margin-top: 0.17rem;
-#         color: #788ba2;
-#         font-size: 0.64rem;
-#         text-overflow: ellipsis;
-#         white-space: nowrap;
-#     }
-
-#     /* ========================================================
-#        CLIENT WORKSPACE CONTROLS
-#        Keep Streamlit's white application form styling out of
-#        the dark sidebar and make all workspace controls readable.
-#        ======================================================== */
-
-#     .cc-workspace-help {
-#         margin: -0.02rem 0.18rem 0.42rem 0.18rem;
-#         color: #8295ac;
-#         font-size: 0.66rem;
-#         line-height: 1.35;
-#     }
-
-#     /* Workspace select */
-#     section[data-testid="stSidebar"] div[data-baseweb="select"] > div {
-#         min-height: 40px !important;
-#         background: #ffffff !important;
-#         border: 1px solid #d7dee8 !important;
-#         border-radius: 9px !important;
-#         box-shadow: none !important;
-#     }
-
-#     section[data-testid="stSidebar"] div[data-baseweb="select"] > div:hover {
-#         border-color: #9fb5d0 !important;
-#         background: #ffffff !important;
-#     }
-
-#     /* Selected workspace text: black + bold. */
-#     section[data-testid="stSidebar"] div[data-baseweb="select"] span,
-#     section[data-testid="stSidebar"] div[data-baseweb="select"] input,
-#     section[data-testid="stSidebar"] div[data-baseweb="select"] [data-testid="stSelectboxVirtualDropdown"] {
-#         color: #111827 !important;
-#         -webkit-text-fill-color: #111827 !important;
-#         font-size: 0.78rem !important;
-#         font-weight: 700 !important;
-#     }
-
-#     section[data-testid="stSidebar"] div[data-baseweb="select"] svg {
-#         color: #475569 !important;
-#         fill: #475569 !important;
-#     }
-
-#     section[data-testid="stSidebar"] div[data-baseweb="select"] input::placeholder {
-#         color: #64748b !important;
-#         -webkit-text-fill-color: #64748b !important;
-#         font-weight: 600 !important;
-#         opacity: 1 !important;
-#     }
-
-#     /* Workspace expander */
-#     section[data-testid="stSidebar"] div[data-testid="stExpander"] {
-#         margin-top: 0.42rem !important;
-#         margin-bottom: 0.72rem !important;
-#     }
-
-#     section[data-testid="stSidebar"] div[data-testid="stExpander"] details {
-#         overflow: hidden;
-#         background: rgba(255,255,255,0.025) !important;
-#         border: 1px solid rgba(255,255,255,0.075) !important;
-#         border-radius: 10px !important;
-#         box-shadow: none !important;
-#     }
-
-#     section[data-testid="stSidebar"] div[data-testid="stExpander"] summary {
-#         min-height: 40px !important;
-#         padding: 0.48rem 0.68rem !important;
-#         background: rgba(255,255,255,0.035) !important;
-#         border-radius: 9px !important;
-#     }
-
-#     section[data-testid="stSidebar"] div[data-testid="stExpander"] summary:hover {
-#         background: rgba(255,255,255,0.07) !important;
-#     }
-
-#     section[data-testid="stSidebar"] div[data-testid="stExpander"] summary p,
-#     section[data-testid="stSidebar"] div[data-testid="stExpander"] summary span,
-#     section[data-testid="stSidebar"] div[data-testid="stExpander"] summary svg {
-#         color: #dce8f6 !important;
-#         fill: #9fb2c9 !important;
-#         font-size: 0.76rem !important;
-#         font-weight: 650 !important;
-#     }
-
-#     /* Do not inherit the main-page white form card inside sidebar. */
-#     section[data-testid="stSidebar"] div[data-testid="stExpander"] div[data-testid="stForm"] {
-#         margin: 0 !important;
-#         padding: 0.65rem 0.68rem 0.72rem 0.68rem !important;
-#         background: transparent !important;
-#         border: 0 !important;
-#         border-top: 1px solid rgba(255,255,255,0.06) !important;
-#         border-radius: 0 !important;
-#         box-shadow: none !important;
-#     }
-
-#     section[data-testid="stSidebar"] div[data-testid="stExpander"] label p {
-#         color: #9eb0c6 !important;
-#         font-size: 0.67rem !important;
-#         font-weight: 650 !important;
-#     }
-
-#     .cc-workspace-danger-title {
-#         margin-top: 0.75rem;
-#         padding-top: 0.72rem;
-#         border-top: 1px solid rgba(248,113,113,0.22);
-#         color: #fca5a5;
-#         font-size: 0.72rem;
-#         font-weight: 800;
-#         text-transform: uppercase;
-#         letter-spacing: 0.04em;
-#     }
-
-#     /* Workspace-name input */
-#     section[data-testid="stSidebar"] .stTextInput input {
-#         min-height: 39px !important;
-#         background: #ffffff !important;
-#         border: 1px solid #d7dee8 !important;
-#         border-radius: 8px !important;
-#         color: #111827 !important;
-#         -webkit-text-fill-color: #111827 !important;
-#         caret-color: #111827 !important;
-#         box-shadow: none !important;
-#         font-size: 0.77rem !important;
-#         font-weight: 700 !important;
-#     }
-
-#     section[data-testid="stSidebar"] .stTextInput input:focus {
-#         border-color: rgba(100, 149, 255, 0.75) !important;
-#         box-shadow: 0 0 0 1px rgba(100, 149, 255, 0.30) !important;
-#     }
-
-#     section[data-testid="stSidebar"] .stTextInput input::placeholder {
-#         color: #64748b !important;
-#         -webkit-text-fill-color: #64748b !important;
-#         font-weight: 600 !important;
-#         opacity: 1 !important;
-#     }
-
-#     /* Create workspace submit button */
-#     section[data-testid="stSidebar"] div[data-testid="stForm"] button {
-#         width: 100% !important;
-#         min-height: 38px !important;
-#         margin-top: 0.25rem !important;
-#         justify-content: center !important;
-#         text-align: center !important;
-#         background: #2563eb !important;
-#         border: 1px solid #3b82f6 !important;
-#         border-radius: 8px !important;
-#         color: #ffffff !important;
-#         font-size: 0.76rem !important;
-#         font-weight: 700 !important;
-#         box-shadow: none !important;
-#     }
-
-#     section[data-testid="stSidebar"] div[data-testid="stForm"] button:hover {
-#         background: #2f6ff2 !important;
-#         border-color: #60a5fa !important;
-#     }
-
-#     /* Streamlit may mount the select menu in a portal outside the sidebar. */
-#     div[role="listbox"] {
-#         background: #ffffff !important;
-#         border: 1px solid #d8e1ec !important;
-#         border-radius: 9px !important;
-#         box-shadow: 0 10px 30px rgba(15, 23, 42, 0.14) !important;
-#     }
-
-#     div[role="listbox"] [role="option"] {
-#         color: #14233a !important;
-#         background: #ffffff !important;
-#         font-size: 0.79rem !important;
-#     }
-
-#     div[role="listbox"] [role="option"]:hover,
-#     div[role="listbox"] [aria-selected="true"] {
-#         color: #0f1f36 !important;
-#         background: #edf4ff !important;
-#     }
-
-#     </style>
-#     """,
-#     unsafe_allow_html=True,
-# )
 
 
 st.markdown(
@@ -6806,32 +5685,102 @@ def render_billing_results(billing: dict | None) -> None:
 def render_classification_results(data: dict | None) -> None:
     if not data:
         return
+
     st.divider()
     st.subheader("Infrastructure Classification")
-    if not data.get("billing_available"):
-        st.warning(
-            "Classification is pending because Billing MCP evidence is unavailable. "
-            "Discovered services are not being labelled Unbilled just because billing failed."
-        )
-    primary=data.get("primary_paid_services") or []; zero=data.get("zero_cost_services") or []; supporting=data.get("supporting_services") or []; unbilled=data.get("discovered_unbilled_services") or []
-    cols=st.columns(5);cols[0].metric("Paid Services",len(primary));cols[1].metric("Zero-Cost",len(zero));cols[2].metric("Supporting",len(supporting));cols[3].metric("Unbilled",len(unbilled));cols[4].metric("Paid Regions",len(data.get("paid_regions") or []))
-    tabs=st.tabs(["Paid Services","Zero-Cost","Supporting","Regions"])
+
+    primary = data.get("primary_services") or []
+    secondary = data.get("secondary_services") or []
+    unclassified = data.get("unclassified_services") or []
+    paid_regions = data.get("paid_regions") or []
+    billing_only_locations = (
+        data.get("billing_only_locations")
+        or data.get("billed_only_regions")
+        or []
+    )
+
+    cols = st.columns(5)
+    cols[0].metric("Primary Services", len(primary))
+    cols[1].metric("Secondary Services", len(secondary))
+    cols[2].metric("Unclassified", len(unclassified))
+    cols[3].metric("Paid Regions", len(paid_regions))
+    cols[4].metric("Billing-only Locations", len(billing_only_locations))
+
+    tabs = st.tabs(
+        ["Primary", "Secondary", "Unclassified", "Regions"]
+    )
+
     with tabs[0]:
-        if primary:st.dataframe(primary,use_container_width=True,hide_index=True);_render_context_buttons(primary,kind="SERVICE",key_prefix="primary_chat")
-        else:st.info("No paid resource-backed services classified.")
+        if primary:
+            st.caption(
+                "Primary = discovered service + billing match confidence + "
+                "PAID or ZERO_COST_BILLING_EVIDENCE."
+            )
+            st.dataframe(primary, use_container_width=True, hide_index=True)
+            _render_context_buttons(
+                primary,
+                kind="SERVICE",
+                key_prefix="primary_chat",
+            )
+        else:
+            st.info("No services currently satisfy the Primary evidence rule.")
+
     with tabs[1]:
-        if zero:st.dataframe(zero,use_container_width=True,hide_index=True);_render_context_buttons(zero,kind="SERVICE",key_prefix="zero_chat")
-        else:st.info("No zero-cost billing candidates classified.")
+        if secondary:
+            st.caption(
+                "Secondary = discovered service without complete qualifying "
+                "Primary billing evidence."
+            )
+            st.dataframe(secondary, use_container_width=True, hide_index=True)
+            _render_context_buttons(
+                secondary,
+                kind="SERVICE",
+                key_prefix="secondary_chat",
+            )
+        else:
+            st.info("No Secondary services classified.")
+
     with tabs[2]:
-        if supporting:st.dataframe(supporting,use_container_width=True,hide_index=True);_render_context_buttons(supporting,kind="SERVICE",key_prefix="support_chat")
-        if unbilled:
-            with st.expander(f"Discovered unbilled ({len(unbilled)})"):
-                st.dataframe(unbilled,use_container_width=True,hide_index=True);_render_context_buttons(unbilled,kind="SERVICE",key_prefix="unbilled_chat")
+        if unclassified:
+            st.caption(
+                "Unclassified = evidence exists but cannot be correlated "
+                "reliably enough for deterministic classification."
+            )
+            st.dataframe(
+                unclassified,
+                use_container_width=True,
+                hide_index=True,
+            )
+            _render_context_buttons(
+                unclassified,
+                kind="SERVICE",
+                key_prefix="unclassified_chat",
+            )
+        else:
+            st.info("No Unclassified services.")
+
     with tabs[3]:
-        for title,key in (("Paid / Primary Regions","paid_regions"),("Used but Unbilled Regions","used_unbilled_regions"),("Enabled but Unused Regions","enabled_unused_regions"),("Billing-only Regions","billed_only_regions")):
-            rows=data.get(key) or [];st.markdown(f"#### {title}")
-            if rows:st.dataframe(rows,use_container_width=True,hide_index=True);_render_context_buttons(rows,kind="REGION",key_prefix=f"region_{key}")
-            else:st.caption("No Regions in this category.")
+        region_groups = (
+            ("Paid Regions", "paid_regions"),
+            ("Used without positive regional billing", "used_unbilled_regions"),
+            ("Enabled but unused", "enabled_unused_regions"),
+            ("Billing-only Locations", "billing_only_locations"),
+        )
+        for title, key in region_groups:
+            rows = data.get(key) or []
+            if key == "billing_only_locations" and not rows:
+                rows = data.get("billed_only_regions") or []
+
+            st.markdown(f"#### {title}")
+            if rows:
+                st.dataframe(rows, use_container_width=True, hide_index=True)
+                _render_context_buttons(
+                    rows,
+                    kind="REGION",
+                    key_prefix=f"region_{key}",
+                )
+            else:
+                st.caption("No entries in this category.")
 
 def render_scan_warnings(
     warnings: list,
@@ -8790,6 +7739,9 @@ else:
     )
 
 
+     
+     
+     
      
      
      
