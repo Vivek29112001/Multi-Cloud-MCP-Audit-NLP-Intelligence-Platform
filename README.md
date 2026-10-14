@@ -1,963 +1,271 @@
-## Phase 1 target
+# Multicloud-MCP
 
-#### The end result of Phase 1 should behave like this:
+### Dynamic AWS Inventory, MCP-Powered Investigation & Evidence-Grounded AI Chat
 
-Client
-│
-│ Access Key + Secret Key
-▼
-XYZ Audit Platform
-│
-├── Validate AWS credentials
-│
-├── Identify AWS account
-│
-├── Discover enabled Regions
-│
-├── Discover Availability Zones
-│
-├── Discover actual resources/services
-│
-├── Build dynamic inventory
-│
-├── Store normalized snapshot
-│
-└── Allow NLP questions
-│
-▼
-Groq LLM
-│
-▼
-Query Router
-│
-┌─────┴─────┐
-│ │
-▼ ▼
-Inventory AWS MCP
-snapshot live check
-│ │
-└─────┬─────┘
-▼
-Grounded Answer
+Multicloud-MCP is an AWS-focused cloud discovery and investigation platform that connects a **dynamic resource inventory** with **Groq-powered natural-language questions** and **read-only AWS Model Context Protocol (MCP)** operations.
 
-Our architecture becomes:
+The application is designed to answer questions using the latest saved inventory and previously verified evidence. When additional or fresher information is required, the AI query planner can propose targeted AWS reads. Successful results are retained as versioned evidence for subsequent questions—**without restarting a full-account scan for every query**.
 
-┌───────────────────────────────────────────────┐
-│ XYZ AWS AUDITOR │
-└───────────────────────────────────────────────┘
+> **Project status:** Active development / prototype. AWS is the only implemented cloud-provider target. Local/offline tests have been exercised during development, but end-to-end behavior must be validated against an authorized AWS test account before production use. Do not treat the chat as a certified compliance assessment.
 
-                     USER
-                      │
-                      ▼
-              Streamlit UI
-                      │
-                      ▼
-                 FastAPI
-                      │
-                      ▼
-            AWS Credential Manager
-                      │
-                      ▼
-               Scan Orchestrator
-                      │
-                      ▼
-                  MCP Client
-                      │
-                      ▼
-          AWS Managed MCP Server
-                      │
-                      ▼
-                   AWS APIs
-                      │
-                      ▼
-           Dynamic AWS Infrastructure
-                      │
-                      ▼
-              Scan Orchestrator
-                      │
-                normalize
-                      │
-                      ▼
-                 PostgreSQL
-                      │
-                      ▼
-                 NLP Layer
-                      │
-                    Groq
-                      │
-              ┌───────┴────────┐
-              │                │
-              ▼                ▼
-        Inventory query    Live MCP query
-              │                │
-              └───────┬────────┘
-                      ▼
-                 Final Answer
+## Table of Contents
 
-# Cloud Audit MCP
+- [Key Features](#key-features)
+- [How It Works](#how-it-works)
+- [Architecture](#architecture)
+- [Technology Stack](#technology-stack)
+- [Getting Started](#getting-started)
+- [Using the Application](#using-the-application)
+- [Inventory and Evidence Model](#inventory-and-evidence-model)
+- [Security Principles](#security-principles)
+- [Current Limitations](#current-limitations)
+- [Development Roadmap](#development-roadmap)
 
-AI-assisted cloud infrastructure discovery and auditing platform built around the Model Context Protocol (MCP).
+## Key Features
 
-The project connects to customer cloud environments using authorized read-only credentials, dynamically discovers cloud infrastructure, builds a normalized inventory, and enables natural-language queries against the discovered infrastructure.
+| Capability                         | Description                                                                                                                                                          |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Dynamic AWS discovery**          | Collect account identity, Regions, Availability Zones and indexed resource/service inventory from authorized AWS sources. No fixed customer service list is assumed. |
+| **Inventory-first AI**             | Use the latest effective inventory when answering questions about discovered services and resources.                                                                 |
+| **Targeted live investigation**    | Route questions requiring missing or current data to validated, read-only AWS MCP operations instead of automatically rerunning the whole scan.                      |
+| **Multi-operation query planning** | Groq may plan multiple bounded AWS read operations for a question; the backend validates execution permissions and scope.                                            |
+| **Persisted AWS evidence**         | Store successful live results, provenance and timestamps for later reuse. Attach resource-level fields only when identity can be established reliably.               |
+| **Scan and change history**        | Preserve original automatic scans and maintain an append-only history of inventory updates and live evidence.                                                        |
+| **Service management**             | Add, exclude and restore services **inside the application's effective inventory**. These actions do not create or delete AWS infrastructure.                        |
+| **Contextual AI chat**             | Use general-account, service-specific and resource-specific conversations.                                                                                           |
+| **AWS Regions view**               | Display Regions and observed resource usage in a read-only interface. An undetected Region is not necessarily empty.                                                 |
+| **Billing visibility control**     | Keep billing details collapsed in the UI until opened. The scanner may still collect cost evidence during Auto Scan.                                                 |
+| **Workspace isolation**            | Associate connections, scans, evidence and chats with the appropriate workspace/account.                                                                             |
 
-## Current Status
+**Classification policy:** Multicloud-MCP does **not** assign Primary, Secondary or Tertiary labels to AWS services.
 
-**Phase 1: AWS**
+## How It Works
 
-Current development focuses exclusively on AWS.
+```mermaid
+flowchart TD
+    U[User question] --> G[Groq intent and AWS evidence planner]
+    G --> I[Latest effective inventory and saved evidence]
+    I --> D{Evidence sufficient and fresh?}
+    D -- Yes --> A[Evidence-grounded answer]
+    D -- No --> V[Validate operation, resource scope and IAM authorization]
+    V --> M[Read-only AWS MCP requests]
+    M --> R[Validate and sanitize AWS results]
+    R --> P[Persist live evidence and new revision]
+    P --> A
+    A --> N[Subsequent questions reuse saved evidence]
+```
 
-Future phases will introduce:
+The automatic discovery workflow and the chat workflow are intentionally separate:
 
-- Microsoft Azure
-- Google Cloud Platform
-- Security posture checks
-- Compliance frameworks
-- RAG-based compliance knowledge
-- Cross-cloud inventory
-- Infrastructure relationship analysis
+- **Auto Scan:** Discovers and saves a baseline snapshot of the AWS account.
+- **User Update:** Adds, excludes or restores a service in the effective inventory; the original AWS snapshot remains unchanged.
+- **AI Investigation:** Uses saved evidence first. When the planner identifies required information that is not available or fresh enough, a targeted MCP read may be executed and saved.
 
----
+A missing value **does not automatically guarantee** an AWS call. The planner must identify an appropriate operation, the backend must allow it, the connection must be authorized, and the provider must return usable results. When that is not possible, the application must report the evidence gap rather than invent an answer.
 
-## Project Goal
-
-The objective is to create a cloud auditing platform where an auditor can connect a customer's cloud account and dynamically discover:
-
-- Cloud account identity
-- Enabled Regions
-- Availability Zones
-- Regions actually containing resources
-- Services actively being used
-- Cloud resources
-- Resource configurations
-- Network configuration
-- IAM configuration
-- Security-related metadata
-
-Auditors will then be able to ask questions about the discovered infrastructure using natural language.
-
-Example questions:
+## Architecture
 
 ```text
-Which AWS Regions are being used?
-
-Which services exist in ap-south-1?
-
-How many EC2 instances are running?
-
-Which Availability Zones contain resources?
-
-Show all RDS databases.
-
-Which EC2 instances have public IP addresses?
-
-Is EC2 instance i-123456 currently running?
+                     Streamlit Web Dashboard
+                              |
+                         FastAPI Backend
+                              |
+           +------------------+-------------------+
+           |                  |                   |
+      AWS Discovery      Inventory/History     Groq Query Router
+           |                  |                   |
+       AWS MCP/API      SQLite + SQLAlchemy    Evidence Resolver
+           |                  |                   |
+       AWS Account      Effective Revisions     Read-only AWS MCP
+                              |                   |
+                              +------ Evidence ---+
+                                         |
+                                 Grounded AI Answer
 ```
 
-Answers must be generated from actual cloud-account evidence rather than static or predefined infrastructure data.
-
----
-
-# Architecture
+### Important modules
 
 ```text
-                        Auditor
-                           │
-                           ▼
-                     Streamlit UI
-                           │
-                           ▼
-                       FastAPI
-                           │
-                           ▼
-                  Scan Orchestrator
-                           │
-                           ▼
-                      MCP Client
-                           │
-                           ▼
-                 AWS MCP Proxy / SigV4
-                           │
-                           ▼
-                 AWS Managed MCP Server
-                           │
-                           ▼
-                       AWS APIs
-                           │
-                           ▼
-                  Client AWS Account
-                           │
-                           ▼
-                 Dynamic Discovery
-                           │
-             ┌─────────────┼─────────────┐
-             ▼             ▼             ▼
-          Regions         Zones       Resources
-             │             │             │
-             └─────────────┼─────────────┘
-                           ▼
-                    Normalized Inventory
-                           │
-                           ▼
-                       Database
-                           │
-                      ┌────┴────┐
-                      ▼         ▼
-                    Groq       MCP
-                    NLP        Live Query
-                      │         │
-                      └────┬────┘
-                           ▼
-                       Response
+app/
+  ai/                 Groq intent planning, response generation and chat routing
+  api/                Authentication, workspaces, AWS connections, scans and chats
+  auth/               User authentication and authorization
+  db/                 SQLAlchemy models and async sessions
+  providers/aws/      AWS discovery, credentials, MCP and query execution
+  services/           Inventory revisions and persisted AWS evidence
+ui/
+  app.py              Streamlit dashboard
+alembic/
+  versions/           Database migrations
+tests/                  Offline and regression tests
 ```
 
----
-
-# Design Principles
-
-## Dynamic Discovery
-
-No customer infrastructure information should be statically defined.
-
-The application dynamically retrieves:
-
-```text
-Account
-Regions
-Availability Zones
-Services
-Resources
-Configurations
-```
-
-from the authenticated customer's AWS account.
-
-For example, the application must not contain:
-
-```python
-regions = [
-    "us-east-1",
-    "ap-south-1"
-]
-```
-
-Instead, Regions are retrieved dynamically from AWS.
-
----
-
-## MCP-First AWS Integration
-
-Phase 1 follows an MCP-first architecture.
-
-```text
-Application
-     │
-     ▼
-MCP Client
-     │
-     ▼
-AWS Managed MCP Server
-     │
-     ▼
-AWS APIs
-```
-
-The application does not use boto3 as its primary AWS integration layer.
-
-AWS CLI is intended only for development and debugging where necessary.
-
----
-
-## Deterministic Scanning
-
-The Large Language Model does not decide how infrastructure scanning works.
-
-Scanning is controlled by deterministic application logic:
-
-```text
-Verify Account
-      ↓
-Discover Regions
-      ↓
-Discover Availability Zones
-      ↓
-Discover Resources
-      ↓
-Determine Used Regions
-      ↓
-Determine Used Services
-      ↓
-Collect Resource Configuration
-      ↓
-Normalize
-      ↓
-Store Inventory
-```
-
-This ensures scans remain predictable and auditable.
-
----
-
-## AI Responsibilities
-
-Groq or another LLM is used for:
-
-- Natural-language understanding
-- Intent classification
-- Parameter extraction
-- Query routing
-- Answer generation
-- Explanation
-
-The LLM is not treated as the source of truth.
-
-AWS remains the infrastructure source of truth.
-
----
-
-# Phase 1
-
-Phase 1 focuses on AWS.
-
-## Phase 1 Scope
-
-### AWS Connection
-
-- Accept AWS Access Key ID
-- Accept AWS Secret Access Key
-- Optional AWS Session Token
-- Validate credentials
-- Identify AWS Account
-- Retrieve caller identity
-
-### Region Discovery
-
-Dynamically retrieve:
-
-- Region name
-- Region endpoint
-- Opt-in status
-- Enabled/disabled state
-
-Possible AWS Region states include:
-
-```text
-opt-in-not-required
-opted-in
-not-opted-in
-```
-
-### Availability Zone Discovery
-
-For every enabled Region dynamically retrieve:
-
-- Availability Zone name
-- Zone ID
-- Region
-- Zone state
-- Zone type
-- Opt-in status
-
-### Resource Discovery
-
-Future Phase 1 implementation will identify actual resources in the connected account.
-
-Examples include:
-
-```text
-EC2
-VPC
-S3
-RDS
-Lambda
-IAM
-CloudWatch
-EKS
-ECS
-DynamoDB
-```
-
-The application will not assume that these services exist.
-
-Services are derived from discovered resources.
-
-### Used Region Detection
-
-An enabled Region does not necessarily contain customer infrastructure.
-
-The system therefore distinguishes between:
-
-```text
-Enabled Region
-```
-
-and:
-
-```text
-Used Region
-```
-
-A Region becomes a used Region only when relevant account resources are discovered there.
-
-### Service Detection
-
-Services are derived from discovered AWS resources.
-
-Example:
-
-```text
-AWS::EC2::Instance
-AWS::RDS::DBInstance
-AWS::Lambda::Function
-```
-
-becomes:
-
-```text
-EC2
-RDS
-Lambda
-```
-
-### Natural Language Querying
-
-After inventory creation, an auditor will be able to ask questions such as:
-
-```text
-Which Regions are being used?
-
-Which services exist in Mumbai?
-
-How many EC2 instances exist?
-
-Show all databases.
-
-Which resources exist in us-east-1?
-```
-
-The LLM will query discovered inventory rather than generate answers from general model knowledge.
-
----
-
-# Technology Stack
-
-| Layer           | Technology                          |
-| --------------- | ----------------------------------- |
-| Language        | Python                              |
-| Environment     | uv                                  |
-| Backend         | FastAPI                             |
-| UI              | Streamlit                           |
-| Cloud protocol  | MCP                                 |
-| AWS integration | AWS Managed MCP Server              |
-| MCP SDK         | Official MCP Python SDK             |
-| Authentication  | AWS SigV4                           |
-| AI/NLP          | Groq                                |
-| Validation      | Pydantic                            |
-| Configuration   | pydantic-settings                   |
-| Database        | SQLite initially / PostgreSQL later |
-
----
-
-# Project Structure
-
-```text
-cloud-audit-mcp/
-│
-├── app/
-│   ├── main.py
-│   │
-│   ├── api/
-│   │   ├── aws.py
-│   │   ├── health.py
-│   │   └── schemas/
-│   │       └── aws.py
-│   │
-│   ├── core/
-│   │   └── config.py
-│   │
-│   └── providers/
-│       └── aws/
-│           ├── connection.py
-│           ├── credentials.py
-│           ├── exceptions.py
-│           ├── mcp_client.py
-│           ├── models.py
-│           ├── regions.py
-│           ├── zones.py
-│           ├── result_parser.py
-│           └── scanner.py
-│
-├── ui/
-│   └── app.py
-│
-├── scripts/
-│   └── test_aws_mcp.py
-│
-├── tests/
-│
-├── docs/
-│   ├── architecture.md
-│   ├── phase-1.md
-│   └── security.md
-│
-├── .env.example
-├── .gitignore
-├── pyproject.toml
-├── uv.lock
-└── README.md
-```
-
----
-
-# Local Setup
-
-## Prerequisites
-
-Install:
-
-- Git
-- Python 3.13
-- uv
-- AWS account with read-only auditing permissions
-
-Verify:
+The generic enrichment pipeline is **service-independent at the orchestration level**, but AWS APIs differ in their response structure. Unrecognized or ambiguously scoped responses can be stored as query evidence without being falsely mapped to a resource.
+
+## Technology Stack
+
+| Layer              | Technology                       |
+| ------------------ | -------------------------------- |
+| Language           | Python 3.12+                     |
+| Backend API        | FastAPI, Uvicorn                 |
+| Web UI             | Streamlit                        |
+| AI/NLP             | Groq                             |
+| Cloud integration  | AWS APIs through MCP             |
+| ORM/database       | SQLAlchemy, SQLite (development) |
+| Migrations         | Alembic                          |
+| Validation         | Pydantic                         |
+| Package management | `uv`                             |
+
+## Getting Started
+
+### Prerequisites
+
+- Python 3.12 or later
+- `uv` installed
+- A Groq API key
+- An AWS account and appropriately scoped **read-only permissions**
+- A working AWS MCP connection supported by the repository configuration
+
+### 1. Clone the repository
 
 ```bash
-git --version
-python --version
-uv --version
+git clone https://github.com/<your-github-username>/<repository-name>.git
+cd <repository-name>
 ```
 
----
+Replace the placeholder organization/repository name with your actual GitHub URL.
 
-## Clone Repository
-
-```bash
-git clone <repository-url>
-
-cd cloud-audit-mcp
-```
-
----
-
-## Create Environment
-
-```bash
-uv venv --python 3.13
-```
-
-### Windows
-
-```powershell
-.venv\Scripts\activate
-```
-
-### Linux/macOS
-
-```bash
-source .venv/bin/activate
-```
-
----
-
-## Install Dependencies
+### 2. Install dependencies
 
 ```bash
 uv sync
 ```
 
----
+### 3. Configure environment variables
 
-## Configure Environment
+Create a local `.env` file at the project root. **Never commit it.**
 
-Copy:
-
-```text
-.env.example
-```
-
-to:
-
-```text
-.env
-```
-
-Example:
-
-```env
-APP_NAME=XYZ Cloud Audit MCP
+```dotenv
 APP_ENV=development
-
+JWT_SECRET_KEY=replace-with-a-long-random-secret
+GROQ_API_KEY=replace-with-your-groq-api-key
+GROQ_INTENT_MODEL=openai/gpt-oss-20b
+DATABASE_URL=sqlite+aiosqlite:///./data/aws_auditor.db
 AWS_MCP_ENDPOINT=https://aws-mcp.us-east-1.api.aws/mcp
 AWS_MCP_ENDPOINT_REGION=us-east-1
-
 MCP_READ_ONLY=true
-MCP_TIMEOUT=180
-MCP_TOOL_TIMEOUT=300
-
-GROQ_API_KEY=
 ```
 
-Do not store customer AWS credentials in `.env`.
+The AWS MCP endpoint above is an example of the current project's configuration, not a guarantee that your account has access to that endpoint. Configure authorization and the relevant IAM trust relationship according to your environment.
 
----
+For long-running connections, prefer **cross-account IAM AssumeRole with a unique External ID** and temporary STS credentials. Do not save customer AWS access keys or session secrets in the application database or Git repository.
 
-# Run Backend
+### 4. Apply database migrations
+
+```bash
+uv run alembic current
+uv run alembic upgrade head
+```
+
+For an existing installation, take a secure database backup before running migrations. Use the migration history that matches the version of the code being deployed.
+
+### 5. Start the API
 
 ```bash
 uv run uvicorn app.main:app --reload
 ```
 
-Backend:
+API: `http://127.0.0.1:8000`  
+Interactive API documentation: `http://127.0.0.1:8000/docs`
 
-```text
-http://127.0.0.1:8000
-```
+### 6. Start the Streamlit dashboard
 
-Swagger:
-
-```text
-http://127.0.0.1:8000/docs
-```
-
-Health:
-
-```text
-GET /api/health
-```
-
----
-
-# Run Streamlit
-
-In another terminal:
+In a second terminal:
 
 ```bash
 uv run streamlit run ui/app.py
 ```
 
----
+The dashboard normally opens on `http://localhost:8501`.
 
-# Current APIs
+## Using the Application
 
-## Verify AWS Account
+1. **Register or sign in** and select your workspace.
+2. **Connect an AWS account** using a permitted authentication method.
+3. **Run Auto Scan** to discover the initial service/resource inventory.
+4. **Explore AWS Services, Regions and Resources** using the accordion dashboard.
+5. **Add, exclude or restore a service** in the application inventory when needed. Regions and resource entries remain read-only in the UI.
+6. **Open AI Chat** for the full account or select a specific service/resource for a contextual conversation.
+7. **Review History** to see saved scan and update revisions. Expand Billing only when you want to inspect saved cost information.
 
-```text
-POST /api/aws/verify
-```
-
-Request:
-
-```json
-{
-  "access_key_id": "CLIENT_ACCESS_KEY",
-  "secret_access_key": "CLIENT_SECRET_KEY",
-  "session_token": null
-}
-```
-
-Response:
-
-```json
-{
-  "provider": "AWS",
-  "account_id": "123456789012",
-  "arn": "arn:aws:iam::123456789012:user/audit-user",
-  "user_id": "AIDAXXXXX",
-  "connection_status": "VERIFIED"
-}
-```
-
-Credentials must never be included in the response.
-
----
-
-## Discover AWS Regions
+### Example questions
 
 ```text
-POST /api/aws/regions
+Show all AWS services discovered in this account.
+Which Regions currently have discovered resources?
+How many RDS instances are recorded in my latest inventory?
+What is the configuration of this selected EC2 instance?
+Is encryption configured on this selected database?
+Which saved AWS evidence supports your answer?
+When was this resource configuration last verified?
 ```
 
-The Region list is retrieved dynamically from AWS.
+Some questions require live AWS evidence, appropriate service permissions, or additional security checks. A **resource being discovered does not prove it is secure**.
 
-Example response:
+## Inventory and Evidence Model
 
-```json
-{
-  "total_regions": 0,
-  "enabled_regions": 0,
-  "disabled_regions": 0,
-  "regions": []
-}
-```
+Multicloud-MCP separates three concepts:
 
-Actual values depend entirely on the connected AWS account and current AWS Region availability.
+- **Automatic scan:** The baseline snapshot of AWS-observed inventory.
+- **Effective inventory:** The latest saved view with user service changes and validated enrichment.
+- **Live evidence:** Read-only MCP responses associated with the source account, operation, resource scope, verification time and inventory revision.
 
----
+This separation helps prevent manually entered services from being presented as AWS-verified resources and avoids rewriting historical scans when new evidence arrives.
 
-# Security
+Saved evidence may become stale. Recent matching live results may be reused for a limited period (the Phase 3 development implementation uses a **15-minute window**); explicitly current-state questions may require a fresh read.
 
-This project handles sensitive customer cloud credentials.
+## Security Principles
 
-The following rules are mandatory.
+- **Read-only by design:** Block mutating operations in the application and enforce least-privilege IAM permissions.
+- **Temporary credentials:** Prefer AssumeRole/STS. Never commit or persist customer secrets as database inventory.
+- **Tenant separation:** Scope credentials, connections, inventory, chat sessions and evidence to the appropriate workspace/account.
+- **Evidence provenance:** Record where data came from and when it was verified.
+- **Partial results:** Distinguish successful verification from access denied, missing coverage, incomplete pagination and failed calls.
+- **No unsupported compliance claims:** AI responses are investigation aids, not substitutes for comprehensive, independently validated security assessments.
+- **Protect repository contents:** Exclude `.env`, `data/*.db`, backups, local tokens, private keys, generated credential files and sensitive audit exports.
 
-## Never Commit Credentials
+## Current Limitations
 
-Never commit:
+This project is under active development. Important known boundaries include:
 
-```text
-AWS_ACCESS_KEY_ID
-AWS_SECRET_ACCESS_KEY
-AWS_SESSION_TOKEN
-GROQ_API_KEY
-customer infrastructure data
-raw scan evidence
-```
+- AWS is the current cloud provider; Azure and Google Cloud are **future integrations**, not implemented capabilities.
+- Dynamic discovery may be incomplete when resource indexing, recording, permissions or regional coverage is limited.
+- Generic AWS response normalization attaches fields to resources only when a reliable identity match is available; it cannot safely interpret every possible AWS response shape.
+- Full compliance coverage, comprehensive service security rules and universal risk scoring are not provided automatically.
+- Some parallel updates and multi-worker workflows may require stronger database concurrency controls before production deployment.
+- Billing is hidden until opened in the UI, but collection may happen as part of Auto Scan.
+- End-to-end AWS account, MCP and Groq testing is required for production deployment.
 
-The following paths are ignored by Git:
+## Development Roadmap
 
-```text
-.env
-.aws/
-scan-output/
-raw-evidence/
-```
+- [x] AWS discovery and saved inventory snapshots
+- [x] Service-level Add/Exclude/Restore in the effective inventory
+- [x] Versioned scan, user-edit and live-evidence history
+- [x] Contextual account/service/resource chat
+- [x] Database-first query routing with targeted AWS MCP fallback
+- [x] Generic read-only AWS operation planning and evidence persistence (development implementation)
+- [ ] Evidence completeness checks that independently validate missing required fields
+- [ ] Expand and verify resource identity mapping and regional discovery coverage
+- [ ] Robust per-account concurrent write handling and production test suite
+- [ ] Formal compliance-control mappings and coverage reporting
+- [ ] Additional cloud providers (future)
+
+## Contributing and License
+
+For internal or restricted projects, establish contribution policies, branch protection and a security disclosure process before opening the repository to external contributors.
+
+**License:** No license is asserted by this README. Add a `LICENSE` file only after the repository owner selects the intended licensing terms.
 
 ---
 
-## Read-Only Access
-
-Phase 1 operates in read-only mode.
-
-The application must not intentionally:
-
-```text
-Create resources
-Modify resources
-Delete resources
-Terminate instances
-Change IAM policies
-Change security groups
-Modify customer configuration
-```
-
-The auditing principal should follow least-privilege principles.
-
----
-
-## AI Credential Isolation
-
-Customer credentials must never be sent to an LLM.
-
-Correct flow:
-
-```text
-Credentials
-    ↓
-AWS MCP
-    ↓
-AWS
-```
-
-Incorrect flow:
-
-```text
-Credentials
-    ↓
-Groq
-```
-
-Groq should receive only the minimum infrastructure context required to answer an auditor's question.
-
----
-
-# Development Roadmap
-
-## Phase 1 — AWS Discovery
-
-- [x] Project setup
-- [x] uv environment
-- [x] FastAPI foundation
-- [x] Streamlit foundation
-- [x] MCP client
-- [x] AWS credential verification
-- [x] AWS account identity
-- [x] Dynamic Region discovery
-- [ ] Dynamic Availability Zone discovery
-- [ ] Dynamic resource discovery
-- [ ] Used Region detection
-- [ ] Service detection
-- [ ] Resource normalization
-- [ ] Inventory persistence
-- [ ] Scan orchestration
-- [ ] Groq integration
-- [ ] NLP query routing
-- [ ] Inventory-based Q&A
-- [ ] Live MCP queries
-
-## Phase 2 — Security Analysis
-
-Planned capabilities:
-
-- Security group analysis
-- Public resource detection
-- Storage configuration
-- Encryption checks
-- IAM analysis
-- Network exposure
-- Security findings
-- Deterministic policy engine
-
-## Phase 3 — Compliance Intelligence
-
-Planned capabilities:
-
-- CIS
-- ISO 27001
-- PCI DSS
-- SOC 2
-- Internal security controls
-- RAG-based compliance knowledge
-
-## Phase 4 — Multi-Cloud
-
-Planned providers:
-
-```text
-AWS
-Azure
-GCP
-```
-
-Provider-specific integrations will implement a shared cloud-provider abstraction.
-
----
-
-# Long-Term Architecture
-
-```text
-CloudProvider
-      │
-      ├── AWSProvider
-      │       ↓
-      │     AWS MCP
-      │
-      ├── AzureProvider
-      │       ↓
-      │    Azure MCP
-      │
-      └── GCPProvider
-              ↓
-           GCP MCP
-```
-
-The AI layer should operate against normalized cloud inventory rather than provider-specific raw structures.
-
----
-
-# Disclaimer
-
-This project is intended for authorized cloud-security auditing only.
-
-Only connect accounts where the organization has explicit authorization to inspect the target cloud environment.
-"# cloud-audit-mcp"
-
-# AWS Phase 1 updated backend
-
-This bundle contains the corrected MCP-only AWS Phase-1 backend modules through
-the EC2/VPC/EBS deep-collector step.
-
-## Main fixes
-
-- `AwsCredentials` -> `AWSCredentials`
-- `AWSColectorRegistry` -> `AWSCollectorRegistry`
-- completed `EC2MCPCollector._collect_region()`
-- added EC2 instance, security-group, EBS, subnet and route-table collection
-- added `AWSDeepScanService`
-- added collector factory
-- added typed API request/response schemas
-- added `/api/aws/deep-scan`
-- normalized result parsing
-- kept AWS access through MCP only
-
-## Expected project paths
-
-Copy the `app/` folder content into your existing project while keeping your
-existing `app/core/config.py`.
-
-Your `app/main.py` should include:
-
-```python
-from fastapi import FastAPI
-from app.api.aws import router as aws_router
-```
-
----
-
-## Dynamic Billing-Aware Service / Region Classification
-
-The AWS scan now correlates three independent evidence sources instead of using a hard-coded service catalog:
-
-1. **Resource Explorer** - what resources/services currently exist.
-2. **Cost Explorer** - which billing services and Regions have actual `UnblendedCost`.
-3. **Resource property references** - generic ARN/resource-ID relationships discovered from Resource Explorer properties.
-
-### Classification rules
-
-- `PRIMARY_PAID`: a dynamically discovered service matched to one or more Cost Explorer `SERVICE` values whose combined cost is greater than zero.
-- `PRIMARY_PAID_BILLING_ONLY`: a Cost Explorer service with positive cost that cannot be reliably matched to a Resource Explorer service. It is retained rather than discarded.
-- `SUPPORTING_RELATED`: a discovered service with no positive direct cost that has a resource-reference relationship to a paid discovered service.
-- `DISCOVERED_UNBILLED`: a discovered service with no positive direct cost and no proven relationship to a paid service.
-- `PAID_PRIMARY`: a Region with positive Cost Explorer cost.
-- `USED_UNBILLED`: a Region containing discovered resources but no positive billing amount in the selected billing period.
-- `ENABLED_UNUSED`: an enabled Region with neither discovered resources nor positive billing amount.
-
-The matcher does **not** contain mappings such as `EC2 -> Amazon Elastic Compute Cloud` or `S3 -> Amazon Simple Storage Service`. It derives candidate aliases from the live billing service name itself using normalization, contiguous words, and acronym/run-length generation. Uncertain names remain billing-only instead of being force-matched.
-
-### Billing period
-
-The scan uses the current calendar month up to today (end date is exclusive because Cost Explorer data is not real-time). On the first day of a month, the previous full month is used.
-
-### Additional read-only IAM permissions
-
-To enable billing classification, the supplied audit principal must be allowed to call:
-
-```json
-{
-  "Effect": "Allow",
-  "Action": [
-    "ce:GetCostAndUsage",
-    "ce:GetDimensionValues"
-  ],
-  "Resource": "*"
-}
-```
-
-If these permissions are absent, the infrastructure scan still completes and returns `billing.available=false` with a warning. No AWS credentials are persisted by this feature.
-
-### New response sections
-
-`POST /api/aws/scan` and `GET /api/aws/scans/{scan_id}` now include:
-
-```text
-billing
-classification
-  primary_paid_services
-  supporting_services
-  discovered_unbilled_services
-  non_positive_billing_services
-  paid_regions
-  used_unbilled_regions
-  enabled_unused_regions
-  billed_only_regions
-  relationships
-```
-
-### Database migration
-
-Run before starting an upgraded existing installation:
-
-```bash
-alembic upgrade head
-```
-
-This adds `billing_json` and `classification_json` to `aws_scans`.
+**Multicloud-MCP** — Dynamic AWS discovery, evidence-backed answers, and targeted MCP investigation.

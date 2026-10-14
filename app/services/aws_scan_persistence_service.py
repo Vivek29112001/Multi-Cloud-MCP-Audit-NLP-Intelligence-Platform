@@ -7,12 +7,14 @@ from app.db.models.user import User
 from app.providers.aws.models import AWSScanResult
 from app.repositories.aws_connection_repository import AWSConnectionRepository
 from app.repositories.aws_scan_repository import AWSScanRepository
+from app.services.aws_inventory_service import AWSInventoryService, sanitize_evidence
 
 
 class AWSScanPersistenceService:
     def __init__(self):
         self._connections = AWSConnectionRepository()
         self._scans = AWSScanRepository()
+        self._inventory = AWSInventoryService()
 
     async def save_scan(
         self,
@@ -45,7 +47,7 @@ class AWSScanPersistenceService:
             )
 
         def dump(value):
-            return value.model_dump(mode="json") if value else {}
+            return sanitize_evidence(value.model_dump(mode="json")) if value else {}
 
         scan = AWSScan(
             scan_id=scan_result.scan_id,
@@ -61,12 +63,13 @@ class AWSScanPersistenceService:
             zones_json=dump(scan_result.zones),
             resources_json=dump(scan_result.resources),
             billing_json=dump(scan_result.billing),
-            classification_json=dump(scan_result.classification),
+            classification_json={},  # Legacy DB schema only; no classification generated.
             warnings_json=list(scan_result.warnings),
             timings_json=dict(scan_result.timings),
         )
         saved = await self._scans.save(db, scan)
         await self._scans.activate(db, scan=saved)
+        await self._inventory.register_scan(db, scan=saved, user_id=user.id)
         await db.commit()
         await db.refresh(saved)
         return saved

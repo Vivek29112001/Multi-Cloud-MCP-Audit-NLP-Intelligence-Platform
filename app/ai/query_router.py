@@ -6,14 +6,10 @@ from time import perf_counter
 from typing import Any, Awaitable, Callable
 
 from app.ai.answer_generator import GroqAnswerGenerator
+from app.services.aws_inventory_service import sanitize_evidence
 from app.ai.groq_client import GroqIntentClient
-from app.ai.s3_audit_answer import generate_s3_audit_answer
 from app.ai.snapshot_answer import try_generate_snapshot_answer
 from app.ai.snapshot_evidence import build_snapshot_evidence
-from app.providers.aws.audits.s3_security import (
-    S3SecurityAuditExecutor,
-    S3SecurityAuditRequest,
-)
 from app.providers.aws.credentials import AWSCredentials
 from app.providers.aws.mcp_client import AWSMCPClient
 from app.providers.aws.query.multi_region_executor import AWSMultiRegionQueryExecutor
@@ -27,6 +23,15 @@ from app.providers.aws.query.region_resolver import AWSQueryRegionResolver
 logger = logging.getLogger(__name__)
 
 CredentialLoader = Callable[[], Awaitable[AWSCredentials]]
+LiveEvidenceLookup = Callable[[dict[str, Any]], Awaitable[dict | None]]
+LiveEvidencePersist = Callable[[dict[str, Any], dict], Awaitable[int]]
+
+
+def needs_fresh_data(question: str) -> bool:
+    """Explicit freshness overrides cached evidence; never infer freshness from a default."""
+    import re
+    return bool(re.search(r'\b(right now|currently|at the moment|as of now|live|real.time|refresh|latest state|now)\b', question, re.I))
+
 
 
 class AWSQueryRouter:
@@ -58,7 +63,6 @@ class AWSQueryRouter:
         self._region_resolver = AWSQueryRegionResolver()
         self._executor = AWSMultiRegionQueryExecutor()
         self._answer_generator = GroqAnswerGenerator()
-        self._s3_audit_executor = S3SecurityAuditExecutor()
 
     async def execute(
         self,
@@ -68,31 +72,21 @@ class AWSQueryRouter:
         credential_loader: CredentialLoader | None = None,
         conversation_context: str | None = None,
         selected_context: dict[str, Any] | None = None,
+        live_evidence_lookup: LiveEvidenceLookup | None = None,
+        live_evidence_persist: LiveEvidencePersist | None = None,
     ) -> dict[str, Any]:
         started = perf_counter()
         timings: dict[str, int] = {}
         selected_context = dict(selected_context or {})
+        excluded = set(scan_result.get('excluded_services') or [])
+        selected_service = str(selected_context.get('service') or '').lower().strip()
+        if selected_service and selected_service in excluded:
+            return self._error(started, timings, 'SERVICE_EXCLUDED_BY_USER', {},
+                               f'{selected_service} was removed from the effective inventory by a user. '
+                               'Restore the service in AWS Inventory before requesting its AWS evidence.')
 
-        # ------------------------------------------------------------
-        # Deterministic multi-step S3 audit path.
-        # This runs BEFORE the single-operation Groq planner because an
-        # encryption/public-access/sensitivity audit requires multiple
-        # dependent AWS calls per dynamically discovered bucket.
-        # ------------------------------------------------------------
-        s3_audit_request = S3SecurityAuditRequest.from_question(
-            question,
-            selected_context,
-        )
-        if s3_audit_request is not None:
-            return await self._execute_s3_audit(
-                started=started,
-                timings=timings,
-                question=question,
-                scan_result=scan_result,
-                credential_loader=credential_loader,
-                selected_context=selected_context,
-                request=s3_audit_request,
-            )
+        # Generic Phase 3 path: no service-specific special case is routed here.
+        # Service/resource identifiers are taken from the latest effective inventory.
 
         # ------------------------------------------------------------
         # Generic intent planning.
@@ -101,10 +95,38 @@ class AWSQueryRouter:
         # ------------------------------------------------------------
         t = perf_counter()
         try:
+            resource_inventory = scan_result.get('resources') or {}
+            selected_id = str(selected_context.get('arn') or selected_context.get('resource_id') or '').strip().lower()
+            selected_rows = [
+                item for item in (resource_inventory.get('resources') or [])
+                if isinstance(item, dict) and selected_id and selected_id in {
+                    str(item.get('arn') or '').lower(), str(item.get('resource_id') or '').lower()
+                }
+                and (not selected_service or str(item.get('service') or '').lower() == selected_service)
+            ]
+            planner_context = {
+                **selected_context,
+                '_selected_saved_aws_evidence': [
+                    {
+                        'resource_id': r.get('resource_id'), 'arn': r.get('arn'),
+                        'aws_evidence': r.get('aws_evidence'),
+                    }
+                    for r in selected_rows[:1] if r.get('aws_evidence')
+                ],
+                '_latest_effective_inventory': {
+                    'revision': scan_result.get('inventory_revision'),
+                    'discovered_resources': resource_inventory.get('total_resources'),
+                    'services': [x.get('service') for x in
+                                 (resource_inventory.get('detected_services') or [])[:100]
+                                 if isinstance(x, dict)],
+                    'billing_available': (scan_result.get('billing') or {}).get('available'),
+                    'last_live_update': scan_result.get('last_live_update'),
+                },
+            }
             intent = self._intent_client.parse_aws_question(
                 question,
                 conversation_context=conversation_context,
-                selected_context=selected_context,
+                selected_context=planner_context,
             )
         except Exception:
             logger.exception("AWS intent planning failed")
@@ -118,6 +140,28 @@ class AWSQueryRouter:
 
         timings["intent_ms"] = self._ms(t)
         intent_dict = intent.model_dump(mode="json")
+        planned_service = str(intent.service or '').lower().strip()
+        if selected_service and planned_service and planned_service != selected_service and str(intent.operation).lower() != 'outofscope':
+            return self._error(started, timings, 'SELECTED_SCOPE_MISMATCH', intent_dict,
+                               'This chat is scoped to the selected AWS service. Open the other service to inspect it.')
+        # A resource selection is an actual resource scope, not just a chat title.
+        selected_id = str(selected_context.get('resource_id') or selected_context.get('arn') or '').lower().strip()
+        if selected_id and intent.resource_id and str(intent.resource_id).lower() != selected_id:
+            rows = (scan_result.get('resources') or {}).get('resources') or []
+            record = next((r for r in rows if isinstance(r, dict) and selected_id in {
+                str(r.get('arn') or '').lower(), str(r.get('resource_id') or '').lower()}), None)
+            allowed_ids = {selected_id}
+            if record:
+                allowed_ids.update(str(record.get(k) or '').lower() for k in ('arn','resource_id'))
+            if str(intent.resource_id).lower() not in allowed_ids:
+                return self._error(started, timings, 'SELECTED_SCOPE_MISMATCH', intent_dict,
+                                   'The planned AWS resource differs from the selected resource.')
+        if selected_id and not intent.resource_id and intent.requires_live_data:
+            intent_dict['resource_id'] = selected_context.get('resource_id') or selected_context.get('arn')
+        if str(intent.service or '').lower().strip() in excluded:
+            return self._error(started, timings, 'SERVICE_EXCLUDED_BY_USER', intent_dict,
+                               'This service was removed from the effective inventory by a user. '
+                               'Restore it in AWS Inventory before requesting its AWS evidence.')
 
         if str(intent.operation or "").strip().lower() == "outofscope":
             return self._error(
@@ -130,6 +174,26 @@ class AWSQueryRouter:
                     "discovery snapshots, billing, configuration, and read-only "
                     "cloud-audit questions."
                 ),
+            )
+
+        # Groq may request multiple read-only AWS APIs for a question.  Their
+        # names, services, Regions and parameters are data, not a static registry.
+        try:
+            steps = intent.get_steps()
+        except ValueError:
+            logger.warning('Groq returned an invalid multi-operation plan')
+            return self._error(started, timings, 'INVALID_LIVE_PLAN', intent_dict,
+                               'The AWS query plan could not be validated.')
+        if steps and not intent.requires_live_data:
+            return self._error(started, timings, 'INVALID_LIVE_PLAN', intent_dict,
+                               'Saved-snapshot plans cannot execute AWS API steps.')
+        if steps:
+            return await self._execute_dynamic_plan(
+                started=started, timings=timings, question=question, steps=steps,
+                scan_result=scan_result, credential_loader=credential_loader,
+                selected_context=selected_context, intent_dict=intent_dict,
+                live_evidence_lookup=live_evidence_lookup,
+                live_evidence_persist=live_evidence_persist,
             )
 
         # ------------------------------------------------------------
@@ -181,6 +245,32 @@ class AWSQueryRouter:
                 "response_time_ms": timings["total_ms"],
                 "response_time_seconds": round(timings["total_ms"] / 1000, 2),
             }
+
+        # Reuse a recent, persisted result for the same planned live query.
+        # Current/right-now questions always bypass the cache.
+        if live_evidence_lookup is not None and not needs_fresh_data(question):
+            try:
+                cached = await live_evidence_lookup(intent_dict)
+            except Exception:
+                logger.exception('Unable to read cached AWS evidence')
+                cached = None
+            if cached is not None:
+                try:
+                    answer = self._answer_generator.generate(
+                        question=question, intent=intent_dict, aws_result=cached,
+                    )
+                except Exception:
+                    logger.exception('Cached AWS answer generation failed')
+                    return self._error(started, timings, 'ANSWER_GENERATION_FAILED', intent_dict, self.USER_FORMATTING_ERROR)
+                timings['total_ms'] = self._ms(started)
+                return {
+                    'status': 'SUCCESS', 'source': 'PERSISTED_LIVE_EVIDENCE',
+                    'scan_id': scan_result.get('scan_id'), 'intent': intent_dict,
+                    'selected_context': selected_context, 'answer': answer,
+                    'data': cached, 'warnings': [], 'timings': timings,
+                    'response_time_ms': timings['total_ms'],
+                    'response_time_seconds': round(timings['total_ms'] / 1000, 2),
+                }
 
         # ------------------------------------------------------------
         # Generic single-operation live path.
@@ -254,7 +344,7 @@ class AWSQueryRouter:
 
         regions = self._region_resolver.resolve(
             service=service,
-            requested_region=intent.region,
+            requested_region=intent.region or selected_context.get('region'),
             service_entry=entry,
             fallback_region=credentials.default_region,
         )
@@ -294,7 +384,7 @@ class AWSQueryRouter:
             )
 
         timings["aws_mcp_ms"] = self._ms(t)
-        data = execution.model_dump(mode="json")
+        data = sanitize_evidence(execution.model_dump(mode="json"))
 
         if not execution.successful_regions:
             logger.warning(
@@ -312,6 +402,18 @@ class AWSQueryRouter:
                 data=data,
                 warnings=execution.warnings,
             )
+
+        # Commit validated evidence BEFORE answering, so successful answers
+        # never claim a database update that did not actually persist.
+        if live_evidence_persist is not None:
+            try:
+                revision = await live_evidence_persist(intent_dict, data)
+            except Exception:
+                logger.exception('AWS live evidence could not be persisted')
+                return self._error(started, timings, 'EVIDENCE_PERSISTENCE_FAILED', intent_dict,
+                                   'AWS data was retrieved, but could not be saved. No updated answer was committed.')
+        else:
+            revision = None
 
         t = perf_counter()
         try:
@@ -337,7 +439,8 @@ class AWSQueryRouter:
 
         return {
             "status": "SUCCESS",
-            "source": "LIVE_AWS_MCP_AUTO_AUTH",
+            "source": "LIVE_AWS_MCP_PERSISTED" if revision is not None else "LIVE_AWS_MCP_AUTO_AUTH",
+            "inventory_revision": revision,
             "scan_id": scan_result.get("scan_id"),
             "intent": intent_dict,
             "selected_context": selected_context,
@@ -349,107 +452,138 @@ class AWSQueryRouter:
             "response_time_seconds": round(timings["total_ms"] / 1000, 2),
         }
 
-    async def _execute_s3_audit(
-        self,
-        *,
-        started: float,
-        timings: dict[str, int],
-        question: str,
-        scan_result: dict[str, Any],
+    async def _execute_dynamic_plan(
+        self, *, started: float, timings: dict[str, int], question: str,
+        steps: list[dict[str, Any]], scan_result: dict[str, Any],
         credential_loader: CredentialLoader | None,
-        selected_context: dict[str, Any],
-        request: S3SecurityAuditRequest,
+        selected_context: dict[str, Any], intent_dict: dict[str, Any],
+        live_evidence_lookup: LiveEvidenceLookup | None,
+        live_evidence_persist: LiveEvidencePersist | None,
     ) -> dict[str, Any]:
-        intent_dict = {
-            "service": "s3",
-            "operation": "S3SecurityAudit",
-            "region": None,
-            "params_json": json.dumps(request.as_dict(), separators=(",", ":")),
-            "resource_id": None,
-            "requires_live_data": True,
-        }
+        """One generic pipeline for any set of validated AWS read operations."""
+        selected_service = str(selected_context.get('service') or '').strip().lower()
+        selected_id = str(selected_context.get('arn') or selected_context.get('resource_id') or '').strip().lower()
+        excluded = set(scan_result.get('excluded_services') or [])
+        # Validate the entire plan *before* performing any live AWS call.
+        for step in steps:
+            if step['service'] in excluded:
+                return self._error(started, timings, 'SERVICE_EXCLUDED_BY_USER', intent_dict,
+                                   'This service has been excluded from the effective inventory.')
+            if selected_service and step['service'] != selected_service:
+                return self._error(started, timings, 'SELECTED_SCOPE_MISMATCH', intent_dict,
+                                   'Select the requested service explicitly to change chat scope.')
+            if selected_id and step.get('resource_id') and str(step['resource_id']).lower() != selected_id:
+                # Resource IDs and ARNs may differ: accept either if it matches
+                # the known selected resource in saved inventory.
+                rows = (scan_result.get('resources') or {}).get('resources') or []
+                known = next((r for r in rows if isinstance(r, dict) and selected_id in {
+                    str(r.get('arn') or '').lower(), str(r.get('resource_id') or '').lower()}), None)
+                identities = {selected_id}
+                if known:
+                    identities.update(str(known.get(k) or '').lower() for k in ('arn', 'resource_id'))
+                if str(step['resource_id']).lower() not in identities:
+                    return self._error(started, timings, 'SELECTED_SCOPE_MISMATCH', intent_dict,
+                                       'The planned AWS resource differs from the selected resource.')
+            if selected_id and not step.get('resource_id'):
+                step['resource_id'] = selected_context.get('resource_id') or selected_context.get('arn')
+            try:
+                self._validator.validate(service=step['service'], operation=step['operation'])
+            except UnsafeAWSOperationError:
+                return self._error(started, timings, 'OPERATION_BLOCKED', intent_dict,
+                                   'One of the requested AWS operations is not permitted in read-only mode.')
 
-        if credential_loader is None:
-            return self._error(
-                started,
-                timings,
-                "AWS_AUTHORIZATION_REQUIRED",
-                intent_dict,
-                (
-                    "AWS authorization is required to complete this request. "
-                    "Please reconnect or re-authorize the account."
-                ),
-            )
+        responses: list[dict[str, Any]] = []
+        misses: list[dict[str, Any]] = []
+        for step in steps:
+            cached = None
+            if live_evidence_lookup and not needs_fresh_data(question):
+                try:
+                    cached = await live_evidence_lookup(step)
+                except Exception:
+                    logger.exception('Generic cached evidence lookup failed')
+            if cached is not None and not cached.get('failed_regions'):
+                responses.append({'intent': step, 'source': 'PERSISTED_LIVE_EVIDENCE', 'evidence': cached})
+            else:
+                misses.append(step)
 
+        revision = None
+        warnings = []
+        if misses:
+            if credential_loader is None or live_evidence_persist is None:
+                return self._error(started, timings, 'AWS_AUTHORIZATION_REQUIRED' if credential_loader is None
+                                   else 'EVIDENCE_PERSISTENCE_UNAVAILABLE', intent_dict,
+                                   'AWS authorization and evidence persistence are required for missing data.')
+            try:
+                credentials = await credential_loader()
+            except Exception:
+                logger.exception('AWS authorization failed')
+                return self._error(started, timings, 'AWS_AUTHORIZATION_REQUIRED', intent_dict,
+                                   'AWS authorization is required. Reconnect or configure an IAM role.')
+            try:
+                async with AWSMCPClient(credentials) as mcp:
+                    for step in misses:
+                        try:
+                            detected = (scan_result.get('resources') or {}).get('detected_services') or []
+                            entry = next((r for r in detected if r.get('service') == step['service']), None)
+                            regions = self._region_resolver.resolve(
+                                service=step['service'], requested_region=step.get('region') or selected_context.get('region'),
+                                service_entry=entry, fallback_region=credentials.default_region,
+                            )
+                            execution = await self._executor.execute(
+                                credentials=credentials, service=step['service'],
+                                operation=step['operation'], regions=regions,
+                                params=json.loads(step['params_json']), mcp=mcp,
+                            )
+                            data = sanitize_evidence(execution.model_dump(mode='json'))
+                            if not execution.successful_regions:
+                                warnings.append({'service': step['service'], 'operation': step['operation'],
+                                                 'status': 'AWS_QUERY_FAILED', 'warnings': execution.warnings})
+                                continue
+                            # Each successful read is committed before any final answer.
+                            revision = await live_evidence_persist(step, data)
+                            responses.append({'intent': step, 'source': 'LIVE_AWS_MCP_PERSISTED', 'evidence': data})
+                            if execution.failed_regions or execution.warnings:
+                                warnings.append({'service': step['service'], 'operation': step['operation'],
+                                                 'status': 'PARTIAL_OR_TRUNCATED_COVERAGE', 'warnings': execution.warnings})
+                        except Exception:
+                            logger.exception('Dynamic AWS MCP step failed')
+                            warnings.append({'service': step['service'], 'operation': step['operation'],
+                                             'status': 'FAILED_OR_NOT_PERSISTED'})
+            except Exception:
+                logger.exception('AWS MCP connection failed for dynamic operation plan')
+                if not responses:
+                    return self._error(started, timings, 'AWS_MCP_EXECUTION_FAILED', intent_dict,
+                                       self.USER_EXECUTION_ERROR)
+                warnings.append({'status': 'MCP_CONNECTION_FAILED'})
+
+        if not responses:
+            return self._error(started, timings, 'AWS_QUERY_FAILED', intent_dict,
+                               'No requested AWS evidence could be verified and persisted.', warnings=warnings)
+        # A failed step must never be silently interpreted as a passing control.
+        combined = {'plan': [
+            {'service': x['service'], 'operation': x['operation'],
+             'region': x.get('region'), 'resource_id': x.get('resource_id')}
+            for x in steps
+        ], 'results': responses, 'warnings': warnings,
+            'coverage': 'PARTIAL' if warnings or len(responses) != len(steps) else 'COMPLETE'}
         try:
-            t = perf_counter()
-            credentials = await credential_loader()
-            timings["automatic_auth_ms"] = self._ms(t)
-        except Exception:
-            logger.exception("Automatic AWS authentication failed for S3 audit")
-            return self._error(
-                started,
-                timings,
-                "AWS_AUTHORIZATION_REQUIRED",
-                intent_dict,
-                (
-                    "AWS authorization is required to complete this request. "
-                    "Please reconnect or re-authorize the account."
-                ),
+            answer = self._answer_generator.generate(
+                question=question, intent=intent_dict, aws_result=combined,
             )
-
-        t = perf_counter()
-        try:
-            async with AWSMCPClient(credentials) as mcp:
-                data = await self._s3_audit_executor.execute(
-                    mcp=mcp,
-                    request=request,
-                )
         except Exception:
-            logger.exception("S3 multi-step security audit failed")
-            return self._error(
-                started,
-                timings,
-                "AWS_MCP_EXECUTION_FAILED",
-                intent_dict,
-                self.USER_EXECUTION_ERROR,
-            )
-
-        timings["aws_mcp_ms"] = self._ms(t)
-
-        # Deterministic formatting deliberately avoids a second Groq call for
-        # this evidence-heavy audit. This prevents a completed audit from being
-        # lost to an answer-formatting 400/413.
-        t = perf_counter()
-        answer = generate_s3_audit_answer(
-            audit_result=data,
-            question=question,
-        )
-        timings["answer_ms"] = self._ms(t)
-        timings["total_ms"] = self._ms(started)
-
-        warnings: list[Any] = list(data.get("warnings") or [])
-        for bucket in data.get("buckets") or []:
-            for warning in bucket.get("warnings") or []:
-                warnings.append(
-                    {
-                        "bucket": bucket.get("name"),
-                        **warning,
-                    }
-                )
-
+            logger.exception('Dynamic evidence answer generation failed')
+            return self._error(started, timings, 'ANSWER_GENERATION_FAILED', intent_dict,
+                               self.USER_FORMATTING_ERROR, data=combined, warnings=warnings)
+        if combined['coverage'] == 'PARTIAL':
+            answer += '\n\nSome requested AWS checks could not be verified; this is not a complete security assessment.'
+        timings['total_ms'] = self._ms(started)
         return {
-            "status": "SUCCESS",
-            "source": "LIVE_AWS_MCP_AUTO_AUTH",
-            "scan_id": scan_result.get("scan_id"),
-            "intent": intent_dict,
-            "selected_context": selected_context,
-            "answer": answer,
-            "data": data,
-            "warnings": warnings,
-            "timings": timings,
-            "response_time_ms": timings["total_ms"],
-            "response_time_seconds": round(timings["total_ms"] / 1000, 2),
+            'status': 'SUCCESS', 'source': 'LIVE_AWS_MCP_PERSISTED' if revision is not None else 'PERSISTED_LIVE_EVIDENCE',
+            'inventory_revision': revision, 'scan_id': scan_result.get('scan_id'),
+            'intent': intent_dict, 'selected_context': selected_context,
+            'answer': answer, 'data': combined, 'warnings': warnings,
+            'timings': timings, 'response_time_ms': timings['total_ms'],
+            'response_time_seconds': round(timings['total_ms'] / 1000, 2),
         }
 
     @staticmethod

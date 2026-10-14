@@ -19,6 +19,5 @@ class PersistedAWSScanResponse(BaseModel):
     zones: dict[str, Any]
     resources: dict[str, Any]
     billing: dict[str, Any]
-    classification: dict[str, Any]
     warnings: list[str]
     timings: dict[str, int]

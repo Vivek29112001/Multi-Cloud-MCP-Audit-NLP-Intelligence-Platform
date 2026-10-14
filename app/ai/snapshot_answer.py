@@ -10,19 +10,14 @@ def _unique(values):
     return out
 def _label(e):
     c=e.get("selected_context") or {};return str(c.get("label") or c.get("billing_service") or c.get("service") or c.get("resource_id") or c.get("region") or "the selected AWS context")
-def _service_rows(e):
-    c=e.get("classification") or {};rows=[]
-    for b in ("primary_paid_services","zero_cost_services","supporting_services","discovered_unbilled_services","billing_only_services","non_positive_billing_services"):
-        rows.extend(x for x in (c.get(b) or []) if isinstance(x,dict))
-    return rows
-
 def try_generate_snapshot_answer(*,question:str,snapshot_evidence:dict[str,Any])->str|None:
     q=_norm(question);e=snapshot_evidence;label=_label(e);ctx=e.get("selected_context") or {};when=e.get("scan_completed_at") or e.get("scan_started_at");suffix=f" in the saved scan from {when}" if when else " in the saved scan"
     if "region" in q:
         vals=list(ctx.get("regions") or [])
         for x in (e.get("resources") or {}).get("matching_resources") or []:
             if isinstance(x,dict):vals.append(x.get("region"))
-        for x in _service_rows(e):vals.extend(x.get("regions") or [])
+        for x in (e.get("resources") or {}).get("detected_services") or []:
+            if isinstance(x,dict):vals.extend(x.get("regions") or [])
         if ctx.get("region"):vals.append(ctx.get("region"))
         regions=_unique(vals)
         return (f"{label} was associated with {len(regions)} AWS Region{'s' if len(regions)!=1 else ''}{suffix}: "+", ".join(regions)+".") if regions else f"The saved snapshot does not contain Region evidence for {label}."

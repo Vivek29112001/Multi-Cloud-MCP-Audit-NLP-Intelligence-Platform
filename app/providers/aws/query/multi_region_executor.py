@@ -139,6 +139,8 @@ class AWSMultiRegionQueryExecutor:
             successful_regions.append(
                 region
             )
+            if raw_result.get('pagination_truncated'):
+                warnings.append(f'{region}: AWS result pagination was truncated; evidence is incomplete.')
 
             results.append(
                 AWSRegionalQueryResult(

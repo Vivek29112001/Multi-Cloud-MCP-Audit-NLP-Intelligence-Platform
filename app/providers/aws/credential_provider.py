@@ -8,7 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.models.aws_connection import AWSConnection
 from app.providers.aws.assume_role import AWSAssumeRoleError, AWSAssumeRoleService
-from app.providers.aws.credential_crypto import AWSCredentialCipher
 from app.providers.aws.credentials import AWSCredentials
 from app.providers.aws.session_store import aws_credential_sessions
 from app.repositories.aws_connection_repository import AWSConnectionRepository
@@ -28,14 +27,12 @@ class AWSCredentialProvider:
     Connection-level AWS credential resolver.
 
     The caller supplies user_id + workspace_id + aws_connection_id. The provider decides
-    whether to decrypt persisted POC keys, automatically assume a cross-account
-    role, or fall back to a legacy transient runtime credential.
+    whether to assume a cross-account role or use temporary in-process credentials.
     """
 
     def __init__(self) -> None:
         self._connections = AWSConnectionRepository()
         self._assume_role = AWSAssumeRoleService()
-        self._cipher: AWSCredentialCipher | None = None
         self._cache: dict[int, _CachedCredentials] = {}
         self._cache_lock = asyncio.Lock()
         self._connection_locks: dict[int, asyncio.Lock] = {}
@@ -55,6 +52,18 @@ class AWSCredentialProvider:
         )
         if connection is None:
             raise AWSAutomaticAuthenticationError("AWS connection not found.")
+
+        # Ephemeral user-supplied keys must never be shared through the
+        # connection-wide cache (connections are workspace-scoped, not user-scoped).
+        if (connection.auth_type or '').upper() == 'TRANSIENT_KEYS':
+            transient = await aws_credential_sessions.get(
+                user_id=user_id, aws_connection_id=connection.id,
+            )
+            if transient is None:
+                raise AWSAutomaticAuthenticationError(
+                    'Temporary AWS credentials are unavailable. Reconnect or use ASSUME_ROLE.'
+                )
+            return transient
 
         cached = await self._get_valid_cached(connection.id)
         if cached is not None:
@@ -137,18 +146,10 @@ class AWSCredentialProvider:
                 raise AWSAutomaticAuthenticationError(str(exc)) from exc
 
         if auth_type == "PERSISTED_KEYS":
-            if not connection.credential_ciphertext:
-                raise AWSAutomaticAuthenticationError(
-                    "Encrypted AWS credentials are not configured for this connection."
-                )
-            if self._cipher is None:
-                self._cipher = AWSCredentialCipher()
-            credentials = self._cipher.decrypt(connection.credential_ciphertext)
-            credentials.default_region = (
-                connection.default_region or credentials.default_region
+            raise AWSAutomaticAuthenticationError(
+                "Legacy stored AWS keys are disabled. Reconnect with temporary "
+                "session credentials or configure ASSUME_ROLE."
             )
-            credentials.source = "PERSISTED_ENCRYPTED_KEYS"
-            return credentials
 
         credentials = await aws_credential_sessions.get(
             user_id=user_id,
@@ -157,7 +158,7 @@ class AWSCredentialProvider:
         if credentials is None:
             raise AWSAutomaticAuthenticationError(
                 "This legacy AWS connection only has transient credentials. "
-                "Reconnect once to save encrypted POC credentials, or configure ASSUME_ROLE."
+                "Reconnect with temporary credentials, or configure ASSUME_ROLE."
             )
         return credentials
 
@@ -177,8 +178,6 @@ class AWSCredentialProvider:
         auth_type = (connection.auth_type or "").upper()
         if auth_type == "ASSUME_ROLE":
             return bool(connection.role_arn)
-        if auth_type == "PERSISTED_KEYS":
-            return bool(connection.credential_ciphertext)
         return False
 
 

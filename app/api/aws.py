@@ -11,13 +11,13 @@ from app.api.schemas.aws import (
     AWSVerifyRequest,
 )
 from app.api.schemas.scan import PersistedAWSScanResponse
+from app.api.schemas.inventory import InventoryEditRequest
 from app.auth.dependencies import get_current_user
 from app.db.models.aws_scan import AWSScan
 from app.db.models.user import User
 from app.db.session import get_db
 from app.providers.aws.assume_role import AWSAssumeRoleError, AWSAssumeRoleService
 from app.providers.aws.connection import AWSConnectionService
-from app.providers.aws.credential_crypto import AWSCredentialCipher
 from app.providers.aws.credential_provider import (
     AWSAutomaticAuthenticationError,
     aws_credential_provider,
@@ -30,6 +30,8 @@ from app.repositories.aws_connection_repository import AWSConnectionRepository
 from app.repositories.aws_scan_repository import AWSScanRepository
 from app.services.aws_scan_context_service import AWSScanContextService
 from app.services.aws_scan_persistence_service import AWSScanPersistenceService
+from app.services.aws_inventory_service import AWSInventoryService
+from app.services.aws_query_bindings import live_evidence_bindings
 from app.workspace_dependencies import WorkspaceContext, get_current_workspace
 
 
@@ -42,6 +44,7 @@ scan_context_service = AWSScanContextService()
 query_router = AWSQueryRouter()
 connection_repository = AWSConnectionRepository()
 scan_repository = AWSScanRepository()
+inventory_service = AWSInventoryService()
 
 
 def _serialize_connection(connection):
@@ -79,7 +82,6 @@ def _serialize_scan(scan: AWSScan):
         "zones": scan.zones_json,
         "resources": scan.resources_json,
         "billing": scan.billing_json,
-        "classification": scan.classification_json,
         "warnings": scan.warnings_json,
         "timings": scan.timings_json,
         "started_at": scan.started_at,
@@ -108,7 +110,6 @@ async def _persist_verified(
     default_region: str,
     role_arn: str | None = None,
     external_id: str | None = None,
-    credential_ciphertext: str | None = None,
 ):
     connection = await connection_repository.upsert_auth_config(
         db,
@@ -120,7 +121,6 @@ async def _persist_verified(
         default_region=default_region,
         role_arn=role_arn,
         external_id=external_id,
-        credential_ciphertext=credential_ciphertext,
     )
     await db.commit()
     await db.refresh(connection)
@@ -168,11 +168,6 @@ async def _run_and_persist_scan(
         zones=result.zones.model_dump(mode="json") if result.zones else {},
         resources=result.resources.model_dump(mode="json") if result.resources else {},
         billing=result.billing.model_dump(mode="json") if result.billing else {},
-        classification=(
-            result.classification.model_dump(mode="json")
-            if result.classification
-            else {}
-        ),
         warnings=list(result.warnings),
         timings=dict(result.timings),
     )
@@ -210,16 +205,15 @@ async def verify_aws_account(
             detail=f"Unable to verify AWS account through AWS MCP: {exc}",
         ) from exc
 
-    encrypted = AWSCredentialCipher().encrypt(credentials)
     connection = await _persist_verified(
         db,
         current_user,
         workspace.id,
         identity,
-        auth_type="PERSISTED_KEYS",
+        auth_type="TRANSIENT_KEYS",
         default_region=credentials.default_region,
-        credential_ciphertext=encrypted,
     )
+    await aws_credential_provider.clear_cache(aws_connection_id=connection.id)
     await aws_credential_sessions.set(
         user_id=current_user.id,
         aws_connection_id=connection.id,
@@ -234,7 +228,7 @@ async def verify_aws_account(
         connection_status=identity.connection_status,
         aws_connection_id=connection.id,
         auth_type=connection.auth_type,
-        auto_connect=True,
+        auto_connect=False,
         default_region=connection.default_region,
     )
 
@@ -541,6 +535,11 @@ async def activate_scan(
             status_code=409,
             detail="Only completed scans can be activated.",
         )
+    latest = await inventory_service.ensure_latest(
+        db, workspace_id=workspace.id, connection_id=scan.aws_connection_id,
+    )
+    if latest.base_scan_id != scan.scan_id:
+        raise HTTPException(409, "Historical scans are read-only. Latest effective inventory cannot be rolled back by activation.")
     await scan_repository.activate(db, scan=scan)
     await db.commit()
     await db.refresh(scan)
@@ -574,30 +573,102 @@ async def query_aws(
     current_user: User = Depends(get_current_user),
     workspace: WorkspaceContext = Depends(get_current_workspace),
 ):
-    context = await scan_context_service.load_scan_context(
-        db,
-        user=current_user,
-        workspace_id=workspace.id,
-        scan_id=request.scan_id,
+    requested_scan = await scan_repository.find_by_scan_id(
+        db, scan_id=request.scan_id, workspace_id=workspace.id,
     )
-
+    if requested_scan is None:
+        raise HTTPException(404, "AWS scan not found in this workspace.")
+    context = await scan_context_service.load_latest_context(
+        db, workspace_id=workspace.id, connection_id=requested_scan.aws_connection_id,
+    )
     async def load_credentials():
         return await aws_credential_provider.get_credentials(
-            db,
-            user_id=current_user.id,
-            workspace_id=workspace.id,
-            aws_connection_id=context["aws_connection_id"],
+            db, user_id=current_user.id, workspace_id=workspace.id,
+            aws_connection_id=requested_scan.aws_connection_id,
         )
-
+    lookup, persist = live_evidence_bindings(
+        db, workspace_id=workspace.id,
+        connection_id=requested_scan.aws_connection_id, user_id=current_user.id,
+    )
     return await query_router.execute(
         question=request.question,
         scan_result=context,
         credential_loader=load_credentials,
-        selected_context={
-            "workspace_id": workspace.id,
-            "workspace_name": workspace.workspace.name,
-        },
+        live_evidence_lookup=lookup,
+        live_evidence_persist=persist,
+        selected_context={"workspace_id": workspace.id,
+                          "workspace_name": workspace.workspace.name},
     )
+
+
+@router.get('/connections/{connection_id}/inventory')
+async def get_effective_inventory(
+    connection_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    workspace: WorkspaceContext = Depends(get_current_workspace),
+):
+    connection = await connection_repository.find_by_id(
+        db, workspace_id=workspace.id, connection_id=connection_id)
+    if not connection:
+        raise HTTPException(404, 'AWS connection not found.')
+    return await scan_context_service.load_latest_context(
+        db, workspace_id=workspace.id, connection_id=connection_id,
+    )
+
+
+@router.get('/connections/{connection_id}/inventory/revisions')
+async def get_inventory_revisions(
+    connection_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    workspace: WorkspaceContext = Depends(get_current_workspace),
+):
+    from sqlalchemy import select
+    from app.db.models.aws_inventory_revision import AWSInventoryRevision
+    connection = await connection_repository.find_by_id(
+        db, workspace_id=workspace.id, connection_id=connection_id)
+    if not connection:
+        raise HTTPException(404, 'AWS connection not found.')
+    result = await db.execute(select(AWSInventoryRevision).where(
+        AWSInventoryRevision.workspace_id == workspace.id,
+        AWSInventoryRevision.aws_connection_id == connection_id,
+    ).order_by(AWSInventoryRevision.revision.desc()))
+    return [{"revision": row.revision, "base_scan_id": row.base_scan_id,
+             "change_type": row.change_type, "changed_at": row.changed_at,
+             "changed_by_user_id": row.changed_by_user_id,
+             "change": row.change_json} for row in result.scalars().all()]
+
+
+@router.post('/connections/{connection_id}/inventory/edits')
+async def edit_inventory(
+    connection_id: int,
+    request: InventoryEditRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    workspace: WorkspaceContext = Depends(get_current_workspace),
+):
+    connection = await connection_repository.find_by_id(
+        db, workspace_id=workspace.id, connection_id=connection_id)
+    if not connection:
+        raise HTTPException(404, 'AWS connection not found.')
+    if workspace.role not in {"OWNER", "EDITOR", "ADMIN"}:
+        raise HTTPException(403, "Only a workspace editor or owner can modify inventory.")
+    try:
+        updated = await inventory_service.edit(
+            db, workspace_id=workspace.id, connection_id=connection_id,
+            user_id=current_user.id, action=request.action,
+            service=request.service,
+            resource=request.resource.model_dump(exclude_none=True) if request.resource else None,
+            key=request.resource_key,
+        )
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+    return {"revision": updated.revision, "base_scan_id": updated.base_scan_id,
+            "change_type": updated.change_type, "change": updated.change_json,
+            "inventory": updated.context_json}
 
 
 @router.get("/session/status")
@@ -642,25 +713,22 @@ async def get_aws_session_status(
         }
 
     auto_connect = aws_credential_provider.auto_connect_capable(connection)
+    temporary = await aws_credential_sessions.get(
+        user_id=current_user.id, aws_connection_id=connection.id,
+    )
     return {
         "workspace_id": workspace.id,
-        "connected": auto_connect,
+        "connected": auto_connect or temporary is not None,
         "auto_connect": auto_connect,
         "auth_type": connection.auth_type,
         "auth_status": connection.auth_status,
         "connection_id": connection.id,
-        "credential_storage": (
-            "ENCRYPTED_AT_REST"
-            if connection.auth_type == "PERSISTED_KEYS"
-            else "STS_ASSUME_ROLE"
-            if connection.auth_type == "ASSUME_ROLE"
-            else "TRANSIENT_MEMORY"
-        ),
-        "persists_across_server_restart": connection.auth_type
-        in {"PERSISTED_KEYS", "ASSUME_ROLE"},
+        "credential_storage": "STS_ASSUME_ROLE" if connection.auth_type == "ASSUME_ROLE" else "TRANSIENT_MEMORY",
+        "persists_across_server_restart": connection.auth_type == "ASSUME_ROLE",
         "snapshot_access_requires_live_credentials": False,
         "last_auth_error": connection.last_auth_error,
     }
+
 
 
 @router.delete("/session")

@@ -21,6 +21,7 @@ from app.repositories.chat_repository import ChatRepository
 from app.repositories.query_execution_repository import QueryExecutionRepository
 from app.services.aws_scan_context_service import AWSScanContextService
 from app.services.chat_service import ChatService
+from app.services.aws_query_bindings import live_evidence_bindings
 from app.services.chat_title_service import ChatTitleService
 from app.services.conversation_context_service import ConversationContextService
 from app.workspace_dependencies import WorkspaceContext, get_current_workspace
@@ -200,11 +201,8 @@ async def query_chat(
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found in this workspace.")
 
-    scan = await scan_context_service.load_scan_context(
-        db,
-        user=current_user,
-        workspace_id=workspace.id,
-        scan_id=chat.scan_id,
+    scan = await scan_context_service.load_latest_context(
+        db, workspace_id=workspace.id, connection_id=chat.aws_connection_id,
     )
     conversation = (
         await conversation_context_service.build(
@@ -226,7 +224,7 @@ async def query_chat(
         content=request.question,
     )
     if first and chat.title == "New AWS Chat":
-        chat.title = chat_title_service.generate(request.question)
+        chat.title = await chat_title_service.generate(request.question)
 
     async def load_credentials():
         return await aws_credential_provider.get_credentials(
@@ -243,19 +241,26 @@ async def query_chat(
         "workspace_id": workspace.id,
         "workspace_name": workspace.workspace.name,
     }
+    evidence_lookup, evidence_persist = live_evidence_bindings(
+        db, workspace_id=workspace.id, connection_id=chat.aws_connection_id,
+        user_id=current_user.id,
+    )
     result = await query_router.execute(
         question=request.question,
         scan_result=scan,
         credential_loader=load_credentials,
         conversation_context=conversation,
         selected_context=selected_context,
+        live_evidence_lookup=evidence_lookup,
+        live_evidence_persist=evidence_persist,
     )
 
     answer = result.get("answer", "No answer was generated.")
     evidence = {
         "source": result.get("source"),
         "workspace_id": workspace.id,
-        "scan_id": result.get("scan_id") or chat.scan_id,
+        "scan_id": result.get("scan_id") or scan['scan_id'],
+        "inventory_revision": result.get('inventory_revision') or scan.get('inventory_revision'),
         "selected_context": result.get("selected_context") or selected_context,
         "data": result.get("data"),
         "warnings": result.get("warnings") or [],

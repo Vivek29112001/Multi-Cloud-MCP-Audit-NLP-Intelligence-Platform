@@ -160,7 +160,8 @@ def generate_s3_audit_answer(
     if inventory_requested and not posture_requested:
         lines.append("### S3 bucket inventory")
         lines.append("")
-        lines.append(f"Found **{len(buckets)} unique bucket(s)**. Each bucket Region was resolved with `GetBucketLocation`; `ListBuckets` was executed only once.")
+        scope = audit_result.get("scope") or "ACCOUNT"
+        lines.append(f"Found **{len(buckets)} bucket(s)** for this {'selected bucket' if scope == 'BUCKET' else 'AWS account'} audit. Bucket Region lookup used `GetBucketLocation` where possible.")
         lines.append("")
         lines.append("| Bucket | Region | Creation date |")
         lines.append("| --- | --- | --- |")
@@ -181,7 +182,8 @@ def generate_s3_audit_answer(
     lines.append("### S3 security audit")
     lines.append("")
     lines.append(
-        f"Checked **{len(buckets)} unique bucket(s)**. "
+        f"Checked **{len(buckets)} bucket(s)** "
+        f"({'selected bucket' if audit_result.get('scope') == 'BUCKET' else 'account scope'}). "
         f"**{len(affected)} bucket(s)** require review for the requested controls."
     )
     lines.append("")
@@ -288,6 +290,19 @@ def generate_s3_audit_answer(
             lines.append(f"- Risk: {_risk_summary(bucket)}")
             lines.append(f"- Recommendation: {_recommendation(bucket)}")
             lines.append("")
+
+    evidence_gaps = [
+        (b.get('name'), w.get('operation'))
+        for b in buckets for w in (b.get('warnings') or [])
+        if isinstance(w, dict) and w.get('operation')
+    ]
+    if evidence_gaps:
+        lines.append('')
+        lines.append('**Incomplete evidence:** the following AWS operations could not be verified: '
+                     + ', '.join(f"{name}/{operation}" for name, operation in evidence_gaps[:12])
+                     + '. Do not treat unchecked controls as passing.')
+    lines.append('**Scope limitation:** this is a review of the requested controls, not a certification that the bucket is fully secure.')
+    lines.append('')
 
     if sensitive_requested:
         lines.append(

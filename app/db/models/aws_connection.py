@@ -34,8 +34,7 @@ class AWSConnection(Base):
     display_name: Mapped[str | None] = mapped_column(String(150), nullable=True)
 
     # Connection-level authentication configuration.
-    # PERSISTED_KEYS: encrypted client access keys (POC/backward-compatible).
-    # ASSUME_ROLE: production cross-account role assumed automatically via STS.
+    # TRANSIENT_KEYS: in-process only; ASSUME_ROLE: temporary STS credentials.
     auth_type: Mapped[str] = mapped_column(
         String(32), default="TRANSIENT_KEYS", nullable=False, index=True
     )
@@ -44,7 +43,6 @@ class AWSConnection(Base):
     )
     role_arn: Mapped[str | None] = mapped_column(String(512), nullable=True)
     external_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
-    credential_ciphertext: Mapped[str | None] = mapped_column(Text, nullable=True)
     auth_status: Mapped[str] = mapped_column(
         String(32), default="CONFIGURED", nullable=False
     )

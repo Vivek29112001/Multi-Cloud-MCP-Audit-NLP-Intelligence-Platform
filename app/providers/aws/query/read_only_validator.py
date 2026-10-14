@@ -89,6 +89,16 @@ class AWSReadOnlyOperationValidator:
                 f"{operation} is not permitted."
             )
 
+        # These read-named APIs can disclose sensitive payloads or credentials.
+        sensitive_ops = {
+            'GetSecretValue', 'GetObject', 'GetObjectTorrent',
+            'GetParameter', 'GetParameters', 'GetParametersByPath',
+            'GetAuthorizationToken', 'GetSessionToken',
+            'GetAccessKeyLastUsed',
+        }
+        if operation in sensitive_ops:
+            raise UnsafeAWSOperationError('Sensitive-data operation is blocked.')
+
         if not operation.startswith(
             self.ALLOWED_PREFIXES
         ):

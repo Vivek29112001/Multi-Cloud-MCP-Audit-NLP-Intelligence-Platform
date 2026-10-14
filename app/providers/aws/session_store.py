@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 
 from app.providers.aws.credentials import AWSCredentials
@@ -9,6 +10,7 @@ from app.providers.aws.credentials import AWSCredentials
 @dataclass
 class AWSSessionEntry:
     credentials: AWSCredentials
+    expires_at: datetime
 
 
 class AWSCredentialSessionStore:
@@ -33,6 +35,7 @@ class AWSCredentialSessionStore:
         async with self._lock:
             self._entries[(user_id, aws_connection_id)] = AWSSessionEntry(
                 credentials=credentials,
+                expires_at=datetime.now(timezone.utc) + timedelta(minutes=60),
             )
 
     async def get(
@@ -43,7 +46,12 @@ class AWSCredentialSessionStore:
     ) -> AWSCredentials | None:
         async with self._lock:
             entry = self._entries.get((user_id, aws_connection_id))
-            return entry.credentials if entry else None
+            if entry is None:
+                return None
+            if datetime.now(timezone.utc) >= entry.expires_at or not entry.credentials.valid_for(0):
+                self._entries.pop((user_id, aws_connection_id), None)
+                return None
+            return entry.credentials
 
     async def remove(
         self,

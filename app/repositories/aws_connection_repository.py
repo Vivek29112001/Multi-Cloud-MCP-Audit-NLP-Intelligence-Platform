@@ -74,7 +74,6 @@ class AWSConnectionRepository:
         default_region: str,
         role_arn: str | None = None,
         external_id: str | None = None,
-        credential_ciphertext: str | None = None,
     ) -> AWSConnection:
         connection = await self.find_by_workspace_and_account(
             db,
@@ -95,7 +94,6 @@ class AWSConnectionRepository:
         connection.default_region = default_region or "us-east-1"
         connection.role_arn = role_arn
         connection.external_id = external_id
-        connection.credential_ciphertext = credential_ciphertext
         connection.auth_status = "VERIFIED"
         connection.last_auth_error = None
         connection.last_verified_at = now

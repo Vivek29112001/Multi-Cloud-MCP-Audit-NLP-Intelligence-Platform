@@ -134,6 +134,14 @@ class AWSResourceDiscoveryService:
                 continue
 
             if regional_resources:
+                # Resource Explorer empty-query search can cap at 1,000 matches;
+                # pagination alone does not guarantee complete account inventory.
+                if len(regional_resources) >= 1000:
+                    warnings.append(
+                        f"Resource Explorer reported >=1,000 entries in {region}; "
+                        "discovery coverage may be truncated. Run partitioned queries "
+                        "or alternative inventory collection before asserting absence."
+                    )
                 all_resources.extend(
                     regional_resources
                 )

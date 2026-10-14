@@ -24,6 +24,7 @@ class S3SecurityAuditRequest:
     check_sensitive_indicators: bool = False
     check_versioning: bool = False
     check_logging: bool = False
+    bucket_name: str | None = None
 
     @property
     def needs_live_audit(self) -> bool:
@@ -46,6 +47,7 @@ class S3SecurityAuditRequest:
             "check_sensitive_indicators": self.check_sensitive_indicators,
             "check_versioning": self.check_versioning,
             "check_logging": self.check_logging,
+            "bucket_name": self.bucket_name,
         }
 
     @classmethod
@@ -175,6 +177,7 @@ class S3SecurityAuditRequest:
             check_sensitive_indicators=check_sensitive,
             check_versioning=check_versioning,
             check_logging=check_logging,
+            bucket_name=None,
         )
 
         return request if request.needs_live_audit else None
@@ -342,19 +345,22 @@ def _public_access_posture(public_block, policy_public, acl_grants):
     return "UNKNOWN"
 
 
-bucket_response = await call_boto3(
-    service_name="s3",
-    operation_name="ListBuckets",
-    region_name="us-east-1",
-    params={{}}
-)
-
-# Defensive de-duplication even if an upstream response contains duplicate rows.
-unique_buckets = {{}}
-for bucket in bucket_response.get("Buckets", []) or []:
-    name = bucket.get("Name")
-    if name and name not in unique_buckets:
-        unique_buckets[name] = bucket
+# Bucket-specific chats must not enumerate unrelated client buckets.
+if config.get("bucket_name"):
+    unique_buckets = {{config["bucket_name"]: {{"Name": config["bucket_name"]}}}}
+    result["scope"] = "BUCKET"
+else:
+    bucket_response = await call_boto3(
+        service_name="s3",
+        operation_name="ListBuckets",
+        region_name="us-east-1",
+        params={{}}
+    )
+    unique_buckets = {{}}
+    for bucket in bucket_response.get("Buckets", []) or []:
+        name = bucket.get("Name")
+        if name and name not in unique_buckets:
+            unique_buckets[name] = bucket
 
 result["bucket_count"] = len(unique_buckets)
 

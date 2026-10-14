@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
+from pathlib import Path
 
 from sqlalchemy import event
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -11,6 +13,10 @@ from sqlalchemy.ext.asyncio import (
 
 from app.core.config import settings
 
+
+_db_url = make_url(settings.database_url)
+if _db_url.drivername.startswith("sqlite") and _db_url.database not in (None, "", ":memory:"):
+    Path(_db_url.database).parent.mkdir(parents=True, exist_ok=True)
 
 engine = create_async_engine(
     settings.database_url,
